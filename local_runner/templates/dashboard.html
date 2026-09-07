@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SentinelCloud-Advanced | Medical Cyber-Resilience Portal</title>
+  <!-- Google Fonts & Tailwind / Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f0f4f8;
+      color: #1e293b;
+    }
+    .medical-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+    }
+    .badge-healthy { background-color: #d1fae5; color: #047857; }
+    .badge-alert { background-color: #fee2e2; color: #b91c1c; }
+    .badge-kata { background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+  </style>
+</head>
+<body class="min-h-screen pb-12">
+
+  <!-- Navigation Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-lg bg-teal-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
+          ✚
+        </div>
+        <div>
+          <h1 class="text-xl font-bold text-slate-900 tracking-tight">SentinelCloud<span class="text-teal-600 font-extrabold">-Advanced</span></h1>
+          <p class="text-xs text-slate-500 font-medium">eBPF-Driven Autonomous Medical Cyber-Resilience</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3">
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold badge-kata">
+          🛡️ Kata Containers v3.0 Hypervisor Active
+        </span>
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+          ● System Operational
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 pt-6 space-y-6">
+
+    <!-- KPI Metric Cards Banner -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="medical-card p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mean Time to Detect (MTTD)</div>
+        <div class="text-3xl font-extrabold text-teal-600 mt-1" id="kpi-mttd">1.25s</div>
+        <div class="text-xs font-medium text-emerald-600 mt-1">Target: ≤ 2.0s (PASS)</div>
+      </div>
+      <div class="medical-card p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mean Time to Repair (MTTR)</div>
+        <div class="text-3xl font-extrabold text-teal-600 mt-1" id="kpi-mttr">15.4s</div>
+        <div class="text-xs font-medium text-emerald-600 mt-1">Target: ≤ 45.0s (PASS)</div>
+      </div>
+      <div class="medical-card p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Node CPU Overhead</div>
+        <div class="text-3xl font-extrabold text-teal-600 mt-1" id="kpi-cpu">2.4%</div>
+        <div class="text-xs font-medium text-emerald-600 mt-1">Target: ≤ 5.0% (PASS)</div>
+      </div>
+      <div class="medical-card p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">False Positive Rate</div>
+        <div class="text-3xl font-extrabold text-teal-600 mt-1" id="kpi-fpr">0.00%</div>
+        <div class="text-xs font-medium text-emerald-600 mt-1">Target: ≤ 0.5/24h (PASS)</div>
+      </div>
+    </div>
+
+    <!-- Admin Controls & Dataset Replay Suite -->
+    <div class="medical-card p-6 bg-slate-900 text-white border-slate-800">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            ⚙️ Admin Control Panel & Security Dataset Testing Suite
+          </h2>
+          <p class="text-xs text-slate-400">Replay preprocessed ADFA-LD & BETH eBPF syscall benchmark logs or launch live ransomware kill-chains.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="triggerDatasetReplay()" class="bg-teal-500 hover:bg-teal-600 text-slate-900 px-4 py-2 rounded-lg font-bold text-xs shadow transition">
+            ▶️ Replay ADFA-LD & BETH Dataset
+          </button>
+          <button onclick="triggerAttack()" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow transition">
+            🚨 Launch Ransomware Attack
+          </button>
+          <button onclick="triggerAnsible()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-xs shadow transition">
+            🔧 Run Ansible Remediation Playbook
+          </button>
+          <button onclick="resetSystem()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded-lg font-semibold text-xs transition">
+            🔄 Reset
+          </button>
+        </div>
+      </div>
+      <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 h-28 overflow-y-auto" id="dataset-console">
+          <div class="text-slate-400">[Console] Ready for benchmark dataset replay or ransomware execution.</div>
+        </div>
+        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 h-28 overflow-y-auto" id="ansible-console">
+          <div class="text-slate-400">[Ansible Core] Ready for pod fallback remediation playbooks.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detailed Medical Microservices Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <!-- 1. Vitals Monitoring Service -->
+      <div class="medical-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-900 flex items-center gap-2">
+            ❤️ Patient Vitals Monitoring Service <span class="text-xs text-rose-500 font-semibold">(Critical)</span>
+          </h3>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full badge-healthy">Port 5000</span>
+        </div>
+        <div class="grid grid-cols-3 gap-3 text-center mb-4">
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+            <div class="text-xs text-slate-500 font-medium">Heart Rate</div>
+            <div class="text-xl font-extrabold text-rose-600 mt-1"><span id="vital-hr">74</span> <span class="text-xs font-normal">BPM</span></div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+            <div class="text-xs text-slate-500 font-medium">SpO2 Level</div>
+            <div class="text-xl font-extrabold text-teal-600 mt-1"><span id="vital-spo2">98</span><span class="text-xs font-normal">%</span></div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+            <div class="text-xs text-slate-500 font-medium">Blood Pressure</div>
+            <div class="text-xl font-extrabold text-sky-600 mt-1">120/80</div>
+          </div>
+        </div>
+        <div class="h-32">
+          <canvas id="vitalsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 2. Drug Dispensing Service -->
+      <div class="medical-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-900 flex items-center gap-2">
+            💊 Automated Drug Dispenser Service <span class="text-xs text-rose-500 font-semibold">(Critical)</span>
+          </h3>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full badge-healthy">Port 5001</span>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between text-xs">
+            <div>
+              <div class="font-bold text-slate-800">Morphine 10mg <span class="text-slate-400 font-normal">(PAT-8842)</span></div>
+              <div class="text-slate-500">Prescribed by Dr. Aris</div>
+            </div>
+            <button onclick="dispenseDrug('PAT-8842', 'Morphine 10mg')" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
+              Dispense
+            </button>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between text-xs">
+            <div>
+              <div class="font-bold text-slate-800">Insulin Regular <span class="text-slate-400 font-normal">(PAT-9011)</span></div>
+              <div class="text-slate-500">Prescribed by Dr. Chen</div>
+            </div>
+            <button onclick="dispenseDrug('PAT-9011', 'Insulin Regular')" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
+              Dispense
+            </button>
+          </div>
+          <div class="text-xs text-slate-500 font-medium mt-2">
+            Dispense Audit Log: <span id="dispense-log-status" class="text-slate-700">Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. EHR Confidential Portal -->
+      <div class="medical-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-900 flex items-center gap-2">
+            📋 EHR Confidential Patient Portal
+          </h3>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full badge-kata">Kata Hypervisor</span>
+        </div>
+        <div class="bg-slate-50 p-4 rounded-lg border border-slate-100 space-y-2 text-xs">
+          <div class="flex justify-between border-b pb-2">
+            <span class="font-semibold text-slate-700">Patient: John Doe (PAT-8842)</span>
+            <span class="text-teal-700 font-bold">Post-Op Recovery</span>
+          </div>
+          <div class="text-slate-600">Blood Type: O+ | Allergies: Penicillin</div>
+          <div class="text-slate-500 italic">Security Boundary: Encrypted via Kata Containers QEMU Sandbox</div>
+        </div>
+      </div>
+
+      <!-- 4. Billing & Financial Ledger -->
+      <div class="medical-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-900 flex items-center gap-2">
+            💳 Medical Billing & Ledger Service
+          </h3>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full badge-healthy">Port 5003</span>
+        </div>
+        <div class="space-y-2 text-xs">
+          <div class="bg-slate-50 p-2.5 rounded border border-slate-100 flex justify-between">
+            <span>TX-9901 | Patient PAT-8842</span>
+            <span class="font-bold text-emerald-700">$450.00 (PAID)</span>
+          </div>
+          <div class="bg-slate-50 p-2.5 rounded border border-slate-100 flex justify-between">
+            <span>TX-9902 | Patient PAT-9011</span>
+            <span class="font-bold text-amber-700">$120.00 (PENDING)</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Live Telemetry & Autonomous Remediation Logs -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      
+      <!-- eBPF Telemetry Stream -->
+      <div class="medical-card p-6">
+        <h3 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+          📡 Streaming eBPF Syscall Telemetry Log
+        </h3>
+        <div class="bg-slate-950 text-slate-200 p-4 rounded-lg font-mono text-xs h-64 overflow-y-auto space-y-1" id="telemetry-log">
+          <div class="text-slate-500">[System] Ingesting eBPF ringbuffer telemetry from Tetragon...</div>
+        </div>
+      </div>
+
+      <!-- MAPE-K Autonomous Remediation Actions -->
+      <div class="medical-card p-6">
+        <h3 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+          ⚡ MAPE-K Autonomous Remediation Log
+        </h3>
+        <div class="bg-slate-950 text-slate-200 p-4 rounded-lg font-mono text-xs h-64 overflow-y-auto space-y-2" id="action-log">
+          <div class="text-slate-500">[MAPE-K] Controller watching SecurityAlert custom resources...</div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    const socket = io();
+
+    // Chart.js Live Vitals Setup
+    const ctx = document.getElementById('vitalsChart').getContext('2d');
+    const vitalsChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: Array(15).fill(''),
+        datasets: [{
+          label: 'Heart Rate (BPM)',
+          data: Array(15).fill(74),
+          borderColor: '#e11d48',
+          borderWidth: 2,
+          tension: 0.3,
+          fill: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { min: 60, max: 95 }
+        }
+      }
+    });
+
+    // Socket.IO Telemetry Events
+    socket.on('event', (evt) => {
+      const container = document.getElementById('telemetry-log');
+      const div = document.createElement('div');
+      div.className = evt.is_alert ? 'text-rose-400 font-bold' : 'text-slate-300';
+      div.textContent = `[${evt.timestamp.split('T')[1].split('.')[0]}] [${evt.pod_name}] ${evt.syscall} -> ${evt.target} (score: ${evt.anomaly_score})`;
+      container.prepend(div);
+      if (container.children.length > 50) container.removeChild(container.lastChild);
+
+      // Update Chart
+      vitalsChart.data.datasets[0].data.push(70 + Math.floor(Math.random() * 9));
+      vitalsChart.data.datasets[0].data.shift();
+      vitalsChart.update();
+    });
+
+    // Socket.IO Action Events
+    socket.on('action', (act) => {
+      const container = document.getElementById('action-log');
+      const div = document.createElement('div');
+      div.className = 'border-l-2 border-teal-500 pl-2 py-1';
+      div.innerHTML = `<span class="text-teal-400 font-bold">[${act.action}]</span> Pod: <span class="text-white">${act.pod}</span> | Root Cause: <span class="text-rose-300">${act.root_cause}</span> (${act.status})`;
+      container.prepend(div);
+    });
+
+    // Socket.IO Metrics Updates
+    socket.on('metrics_update', (m) => {
+      document.getElementById('kpi-mttd').textContent = m.mttd_avg + 's';
+      document.getElementById('kpi-mttr').textContent = m.mttr_avg + 's';
+      document.getElementById('kpi-fpr').textContent = m.fpr + '%';
+    });
+
+    // Dataset Replay Callbacks
+    socket.on('dataset_event', (d) => {
+      const consoleEl = document.getElementById('dataset-console');
+      const line = document.createElement('div');
+      line.className = d.detected ? 'text-rose-400 font-bold' : 'text-slate-300';
+      line.textContent = `[Dataset Stream] Pod: ${d.event.pod_name} | Syscall: ${d.event.syscall} | Target: ${d.event.target} | Detected: ${d.detected}`;
+      consoleEl.prepend(line);
+    });
+
+    socket.on('dataset_results', (res) => {
+      const consoleEl = document.getElementById('dataset-console');
+      const summary = document.createElement('div');
+      summary.className = 'text-emerald-400 font-bold mt-1';
+      summary.textContent = `[EVALUATION COMPLETE] MTTD=${res.mttd}s, MTTR=${res.mttr}s, CPU=${res.cpu_overhead}%, FPR=${res.fpr}%`;
+      consoleEl.prepend(summary);
+    });
+
+    socket.on('ansible_event', (ans) => {
+      const consoleEl = document.getElementById('ansible-console');
+      const line = document.createElement('div');
+      line.className = 'text-indigo-400 font-bold';
+      line.textContent = `[${ans.timestamp}] Playbook: ${ans.playbook} | Pod: ${ans.pod} | Action: ${ans.action} -> ${ans.status}`;
+      consoleEl.prepend(line);
+    });
+
+    // API Triggers
+    function triggerDatasetReplay() {
+      fetch('/api/test/dataset-replay', { method: 'POST' });
+    }
+
+    function triggerAttack() {
+      fetch('/api/attack', { method: 'POST' });
+    }
+
+    function triggerAnsible() {
+      fetch('/api/ansible/trigger', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pod_name: 'ehr', action: 'quarantine' }) });
+    }
+
+    function resetSystem() {
+      fetch('/api/reset', { method: 'POST' });
+    }
+
+    function dispenseDrug(patientId, drug) {
+      fetch('/api/drug-dispenser/dispense', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_id: patientId, drug: drug })
+      })
+      .then(r => r.json())
+      .then(res => {
+        document.getElementById('dispense-log-status').textContent = `Dispensed ${drug} for ${patientId}`;
+      });
+    }
+  </script>
+</body>
+</html>
