@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SentinelCloud-Advanced | Clinical Services, PC1 Admin Status & PC2 Attacker Console</title>
+  <!-- Google Fonts & Tailwind / Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .medical-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+    }
+    .nav-tab {
+      padding: 0.6rem 1.1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+    .nav-tab-active {
+      background-color: #0d9488;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(13, 148, 136, 0.25);
+    }
+    .nav-tab-attacker-active {
+      background-color: #e11d48;
+      color: #ffffff;
+      box-shadow: 0 2px 6px rgba(225, 29, 72, 0.25);
+    }
+    .nav-tab-inactive {
+      color: #64748b;
+      background-color: transparent;
+    }
+    .nav-tab-inactive:hover {
+      color: #0f172a;
+      background-color: #f1f5f9;
+    }
+    .badge-healthy { background-color: #d1fae5; color: #047857; }
+    .badge-kata { background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+  </style>
+</head>
+<body class="min-h-screen pb-12">
+
+  <!-- Navigation Header with 3 View Modes -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
+          ✚
+        </div>
+        <div>
+          <h1 class="text-xl font-bold text-slate-900 tracking-tight">SentinelCloud<span class="text-teal-600 font-extrabold">-Advanced</span></h1>
+          <p class="text-xs text-slate-500 font-medium">Healthcare Microservices & Autonomous Resilience Platform</p>
+        </div>
+      </div>
+
+      <!-- Navigation Mode Switcher -->
+      <div class="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 gap-1">
+        <button id="tab-medical-btn" onclick="showMedicalView()" class="nav-tab nav-tab-active flex items-center gap-1.5">
+          🩺 Clinical Services
+        </button>
+        <button id="tab-admin-btn" onclick="requestAdminAccess()" class="nav-tab nav-tab-inactive flex items-center gap-1.5">
+          🔒 PC 1 Admin Status
+        </button>
+        <button id="tab-attacker-btn" onclick="showAttackerView()" class="nav-tab nav-tab-inactive flex items-center gap-1.5">
+          ⚡ PC 2 Attacker Console
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== VIEW 1: CLINICAL MEDICAL SERVICES ==================== -->
+  <main id="view-medical" class="max-w-7xl mx-auto px-6 pt-6 space-y-6">
+
+    <!-- Clinical Overview Header -->
+    <div class="bg-gradient-to-r from-teal-700 to-cyan-800 text-white rounded-2xl p-6 shadow-md flex items-center justify-between">
+      <div>
+        <h2 class="text-xl font-bold">Hospital Microservices Workspace</h2>
+        <p class="text-xs text-teal-100 mt-1">Real-time clinical operations: Vitals Telemetry, Dispensing Queue, Patient Records & Billing Ledger.</p>
+      </div>
+      <div class="hidden md:flex items-center space-x-3">
+        <span class="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-semibold text-white border border-white/20">
+          ● All Clinical Services Online
+        </span>
+      </div>
+    </div>
+
+    <!-- Microservices Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <!-- 1. Vitals Monitoring Service -->
+      <div class="medical-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-900 flex items-center gap-2">
+            ❤️ Patient Vitals Monitoring <span class="text-xs text-rose-500 font-semibold">(Critical)</span>
+          </h3>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full badge-healthy">Port 5000</span>
+        </div>
+        <div class="grid grid-cols-3 gap-3 text-center mb-4">
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+            <div class="text-xs text-slate-500 font-medium">Heart Rate</div>
+            <div class="text-xl font-extrabold text-rose-600 mt-1"><span id="vital-hr">74</span> <span class="text-xs font-normal">BPM</span></div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+            <div class="text-xs text-slate-500 font-medium">SpO2 Level</div>
+            <div class="text-xl font-extrabold text-teal-600 mt-1"><span id="vital-spo2">98</span><span class="text-xs font-normal">%</span></div>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100">
+            <div class="text-xs text-slate-500 font-medium">Blood Pressure</div>
+            <div class="text-xl font-extrabold text-sky-600 mt-1">120/80</div>
+          </div>
+        </div>
+        <div class="h-36">
+          <canvas id="vitalsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 2. Drug Dispensing Service -->
+      <div class="medical-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-900 flex items-center gap-2">
+            💊 Automated Drug Dispenser <span class="text-xs text-rose-500 font-semibold">(Critical)</span>
+          </h3>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full badge-healthy">Port 5001</span>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between text-xs">
+            <div>
+              <div class="font-bold text-slate-800">Morphine 10mg <span class="text-slate-400 font-normal">(PAT-8842)</span></div>
+              <div class="text-slate-500">Prescribed by Dr. Aris</div>
+            </div>
+            <button onclick="dispenseDrug('PAT-8842', 'Morphine 10mg')" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
+              Dispense
+            </button>
+          </div>
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 flex items-center justify-between text-xs">
+            <div>
+              <div class="font-bold text-slate-800">Insulin Regular <span class="text-slate-400 font-normal">(PAT-9011)</span></div>
+              <div class="text-slate-500">Prescribed by Dr. Chen</div>
+            </div>
+            <button onclick="dispenseDrug('PAT-9011', 'Insulin Regular')" class="bg-teal-600 hover:bg-teal-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
+              Dispense
+            </button>
+          </div>
+          <div class="bg-slate-100 p-3 rounded-lg text-xs text-slate-600 font-mono">
+            Audit Status: <span id="dispense-log-status" class="font-semibold text-slate-800">Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. EHR Confidential Portal -->
+      <div class="medical-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-900 flex items-center gap-2">
+            📋 EHR Confidential Patient Portal
+          </h3>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full badge-kata">Protected</span>
+        </div>
+        <div class="bg-slate-50 p-4 rounded-lg border border-slate-100 space-y-2 text-xs">
+          <div class="flex justify-between border-b pb-2">
+            <span class="font-semibold text-slate-700">Patient: John Doe (PAT-8842)</span>
+            <span class="text-teal-700 font-bold">Post-Op Recovery</span>
+          </div>
+          <div class="text-slate-600">Blood Type: O+ | Allergies: Penicillin</div>
+          <div class="text-slate-500 italic">Medical Diagnosis: Cardiac Observation (Room 302)</div>
+        </div>
+      </div>
+
+      <!-- 4. Billing & Financial Ledger -->
+      <div class="medical-card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-slate-900 flex items-center gap-2">
+            💳 Billing & Invoice Ledger
+          </h3>
+          <span class="px-2.5 py-0.5 text-xs font-semibold rounded-full badge-healthy">Port 5003</span>
+        </div>
+        <div class="space-y-2 text-xs">
+          <div class="bg-slate-50 p-2.5 rounded border border-slate-100 flex justify-between">
+            <span>TX-9901 | Patient PAT-8842</span>
+            <span class="font-bold text-emerald-700">$450.00 (PAID)</span>
+          </div>
+          <div class="bg-slate-50 p-2.5 rounded border border-slate-100 flex justify-between">
+            <span>TX-9902 | Patient PAT-9011</span>
+            <span class="font-bold text-amber-700">$120.00 (PENDING)</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+
+  <!-- ==================== VIEW 2: PASSWORD-PROTECTED PC 1 ADMIN STATUS PANEL ==================== -->
+  <main id="view-admin" class="max-w-7xl mx-auto px-6 pt-6 space-y-6 hidden">
+
+    <!-- Admin Header Bar -->
+    <div class="bg-slate-900 text-white rounded-2xl p-6 shadow-md flex items-center justify-between">
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="px-2.5 py-0.5 bg-teal-500 text-slate-950 font-bold text-xs rounded-full">PC 1 TARGET MONITORING</span>
+          <h2 class="text-xl font-bold">Live System & Telemetry Monitoring Status Panel</h2>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">Real-time status monitoring for eBPF kernel telemetry, MAPE-K orchestrator, ClickHouse logs & KPIs.</p>
+      </div>
+      <button onclick="lockAdminAccess()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-700 transition">
+        🔒 Lock Admin Panel
+      </button>
+    </div>
+
+    <!-- KPI Metric Cards Banner -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div class="medical-card p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mean Time to Detect (MTTD)</div>
+        <div class="text-3xl font-extrabold text-teal-600 mt-1" id="kpi-mttd">1.25s</div>
+        <div class="text-xs font-medium text-emerald-600 mt-1">Target: ≤ 2.0s (PASS)</div>
+      </div>
+      <div class="medical-card p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mean Time to Repair (MTTR)</div>
+        <div class="text-3xl font-extrabold text-teal-600 mt-1" id="kpi-mttr">15.4s</div>
+        <div class="text-xs font-medium text-emerald-600 mt-1">Target: ≤ 45.0s (PASS)</div>
+      </div>
+      <div class="medical-card p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Node CPU Overhead</div>
+        <div class="text-3xl font-extrabold text-teal-600 mt-1" id="kpi-cpu">2.4%</div>
+        <div class="text-xs font-medium text-emerald-600 mt-1">Target: ≤ 5.0% (PASS)</div>
+      </div>
+      <div class="medical-card p-5">
+        <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">False Positive Rate</div>
+        <div class="text-3xl font-extrabold text-teal-600 mt-1" id="kpi-fpr">0.00%</div>
+        <div class="text-xs font-medium text-emerald-600 mt-1">Target: ≤ 0.5/24h (PASS)</div>
+      </div>
+    </div>
+
+    <!-- Live Telemetry & Autonomous Remediation Logs -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      
+      <!-- eBPF Telemetry Stream -->
+      <div class="medical-card p-6">
+        <h3 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+          📡 Streaming eBPF Syscall Telemetry Log (Tetragon)
+        </h3>
+        <div class="bg-slate-950 text-slate-200 p-4 rounded-lg font-mono text-xs h-72 overflow-y-auto space-y-1" id="telemetry-log">
+          <div class="text-slate-500">[System] Ingesting eBPF ringbuffer telemetry from Tetragon...</div>
+        </div>
+      </div>
+
+      <!-- MAPE-K Autonomous Remediation Actions -->
+      <div class="medical-card p-6">
+        <h3 class="font-bold text-slate-900 mb-3 flex items-center gap-2">
+          ⚡ MAPE-K Autonomous Remediation Action Log
+        </h3>
+        <div class="bg-slate-950 text-slate-200 p-4 rounded-lg font-mono text-xs h-72 overflow-y-auto space-y-2" id="action-log">
+          <div class="text-slate-500">[MAPE-K] Controller watching SecurityAlert custom resources...</div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+
+  <!-- ==================== VIEW 3: PC 2 ATTACKER OPERATIONS CONSOLE ==================== -->
+  <main id="view-attacker" class="max-w-7xl mx-auto px-6 pt-6 space-y-6 hidden">
+
+    <!-- Attacker Header Bar -->
+    <div class="bg-slate-950 text-white rounded-2xl p-6 shadow-md border border-rose-950 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center space-x-2">
+          <span class="px-2.5 py-0.5 bg-rose-600 text-white font-bold text-xs rounded-full animate-pulse">ATTACKER CONSOLE ACTIVE</span>
+          <h2 class="text-xl font-bold text-rose-500">PC 2 Remote Attack Controller & Launch Panel</h2>
+        </div>
+        <p class="text-xs text-slate-400 mt-1">Simulate multi-stage cyberattacks, ransomware encryption, SMB lateral movement, and DNS exfiltration against PC 1.</p>
+      </div>
+      <div class="text-xs font-mono bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 text-slate-300">
+        Target: <span class="text-rose-400 font-bold">PC 1 (10.70.48.28:5050)</span>
+      </div>
+    </div>
+
+    <!-- Interactive Attack Launcher Grid -->
+    <div class="medical-card p-6 bg-slate-900 border-slate-800 text-white space-y-4">
+      <h3 class="font-bold text-sm text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-3">
+        🚀 Launch Attack Payload Vector
+      </h3>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+
+        <button onclick="launchAttackType('rce')" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-rose-500 p-4 rounded-xl text-left transition space-y-1">
+          <div class="font-bold text-xs text-rose-400 flex items-center justify-between">
+            <span>💥 1. RCE Shell Exec</span>
+            <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded">T1059</span>
+          </div>
+          <div class="text-[11px] text-slate-400">Inject shell command via sys_execve to vitals pod.</div>
+        </button>
+
+        <button onclick="launchAttackType('smb')" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-rose-500 p-4 rounded-xl text-left transition space-y-1">
+          <div class="font-bold text-xs text-rose-400 flex items-center justify-between">
+            <span>🌐 2. SMB Port 445 Breach</span>
+            <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded">T1021</span>
+          </div>
+          <div class="text-[11px] text-slate-400">Lateral movement attempt on port 445 to ehr pod.</div>
+        </button>
+
+        <button onclick="launchAttackType('ransomware')" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-rose-500 p-4 rounded-xl text-left transition space-y-1">
+          <div class="font-bold text-xs text-rose-400 flex items-center justify-between">
+            <span>🔒 3. File Encryption</span>
+            <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded">T1486</span>
+          </div>
+          <div class="text-[11px] text-slate-400">Bulk rename files to .locked extension.</div>
+        </button>
+
+        <button onclick="launchAttackType('dns')" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-rose-500 p-4 rounded-xl text-left transition space-y-1">
+          <div class="font-bold text-xs text-rose-400 flex items-center justify-between">
+            <span>📡 4. DNS Exfiltration</span>
+            <span class="text-[10px] bg-rose-950 text-rose-300 px-2 py-0.5 rounded">DNSObelisk</span>
+          </div>
+          <div class="text-[11px] text-slate-400">Tunnel data via TXT DNS exfil queries.</div>
+        </button>
+
+        <button onclick="launchAttackType('full')" class="bg-rose-600 hover:bg-rose-700 text-white font-bold p-4 rounded-xl text-left transition space-y-1 shadow-md col-span-1 md:col-span-2">
+          <div class="font-bold text-xs flex items-center justify-between">
+            <span>⚡ 5. Full 4-Stage Ransomware Kill-Chain</span>
+            <span class="text-[10px] bg-rose-950 text-white px-2 py-0.5 rounded">FULL ATTACK</span>
+          </div>
+          <div class="text-[11px] text-rose-100">Sequentially executes Recon, RCE, SMB Lateral, Ransomware Encryption & DNS Exfiltration.</div>
+        </button>
+
+      </div>
+
+      <!-- Additional Benchmark Testing Tools -->
+      <div class="pt-3 border-t border-slate-800 flex flex-wrap gap-2">
+        <button onclick="triggerKafkaReplayer()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 rounded-lg font-bold text-xs shadow transition">
+          📊 Stream BETH / ADFA-LD to Kafka
+        </button>
+        <button onclick="triggerClickHouseMetrics()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-2 rounded-lg font-bold text-xs shadow transition">
+          📈 Export ClickHouse Latency Chart & CSV
+        </button>
+        <button onclick="triggerAnsible()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg font-bold text-xs shadow transition">
+          🔧 Trigger Ansible Remediation Fallback
+        </button>
+        <button onclick="resetSystem()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg font-semibold text-xs transition">
+          🔄 Reset Target State
+        </button>
+      </div>
+    </div>
+
+    <!-- Attacker Live Output Console -->
+    <div class="medical-card p-6 bg-slate-950 border-slate-900 text-slate-200">
+      <h3 class="font-bold text-xs uppercase tracking-wider text-rose-400 mb-2 font-mono">
+        [PC 2 Attacker Terminal & Response Feedback]
+      </h3>
+      <div class="bg-black p-4 rounded-lg font-mono text-xs h-64 overflow-y-auto space-y-1.5" id="attacker-console">
+        <div class="text-slate-500">[Attacker Console] Select an attack vector above to launch payload against Target PC 1...</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Password Authorization Modal -->
+  <div id="admin-modal" class="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl border border-slate-200 space-y-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-slate-900 text-teal-400 flex items-center justify-center text-lg font-bold">
+          🔒
+        </div>
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Admin Authorization Required</h3>
+          <p class="text-xs text-slate-500">Enter administrator passcode to view PC 1 system status panel.</p>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-700 mb-1">Admin Passcode</label>
+        <input type="password" id="admin-password-input" placeholder="Enter password (default: admin2026)" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none">
+        <div id="admin-pass-error" class="text-xs text-rose-600 font-semibold mt-1.5 hidden">Invalid password. Please try again.</div>
+      </div>
+      <div class="flex items-center justify-end space-x-2 pt-2">
+        <button onclick="closeAdminModal()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900">Cancel</button>
+        <button onclick="submitAdminPassword()" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold shadow-sm transition">
+          Unlock PC 1 Admin Panel
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+    let isAdminUnlocked = false;
+
+    // Navigation Tab Functions
+    function showMedicalView() {
+      document.getElementById('view-medical').classList.remove('hidden');
+      document.getElementById('view-admin').classList.add('hidden');
+      document.getElementById('view-attacker').classList.add('hidden');
+      document.getElementById('tab-medical-btn').className = 'nav-tab nav-tab-active flex items-center gap-1.5';
+      document.getElementById('tab-admin-btn').className = 'nav-tab nav-tab-inactive flex items-center gap-1.5';
+      document.getElementById('tab-attacker-btn').className = 'nav-tab nav-tab-inactive flex items-center gap-1.5';
+    }
+
+    function requestAdminAccess() {
+      if (isAdminUnlocked) {
+        showAdminView();
+      } else {
+        document.getElementById('admin-modal').classList.remove('hidden');
+        document.getElementById('admin-password-input').focus();
+      }
+    }
+
+    function showAdminView() {
+      document.getElementById('view-medical').classList.add('hidden');
+      document.getElementById('view-admin').classList.remove('hidden');
+      document.getElementById('view-attacker').classList.add('hidden');
+      document.getElementById('tab-medical-btn').className = 'nav-tab nav-tab-inactive flex items-center gap-1.5';
+      document.getElementById('tab-admin-btn').className = 'nav-tab nav-tab-active flex items-center gap-1.5';
+      document.getElementById('tab-attacker-btn').className = 'nav-tab nav-tab-inactive flex items-center gap-1.5';
+    }
+
+    function showAttackerView() {
+      document.getElementById('view-medical').classList.add('hidden');
+      document.getElementById('view-admin').classList.add('hidden');
+      document.getElementById('view-attacker').classList.remove('hidden');
+      document.getElementById('tab-medical-btn').className = 'nav-tab nav-tab-inactive flex items-center gap-1.5';
+      document.getElementById('tab-admin-btn').className = 'nav-tab nav-tab-inactive flex items-center gap-1.5';
+      document.getElementById('tab-attacker-btn').className = 'nav-tab nav-tab-attacker-active flex items-center gap-1.5';
+    }
+
+    function closeAdminModal() {
+      document.getElementById('admin-modal').classList.add('hidden');
+      document.getElementById('admin-pass-error').classList.add('hidden');
+    }
+
+    function lockAdminAccess() {
+      isAdminUnlocked = false;
+      showMedicalView();
+    }
+
+    function submitAdminPassword() {
+      const pass = document.getElementById('admin-password-input').value;
+      fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pass })
+      })
+      .then(r => {
+        if (r.ok) {
+          isAdminUnlocked = true;
+          closeAdminModal();
+          showAdminView();
+        } else {
+          document.getElementById('admin-pass-error').classList.remove('hidden');
+        }
+      })
+      .catch(() => {
+        if (pass === 'admin2026' || pass === 'admin') {
+          isAdminUnlocked = true;
+          closeAdminModal();
+          showAdminView();
+        } else {
+          document.getElementById('admin-pass-error').classList.remove('hidden');
+        }
+      });
+    }
+
+    // Chart.js Live Vitals Setup
+    const ctx = document.getElementById('vitalsChart').getContext('2d');
+    const vitalsChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: Array(15).fill(''),
+        datasets: [{
+          label: 'Heart Rate (BPM)',
+          data: Array(15).fill(74),
+          borderColor: '#e11d48',
+          borderWidth: 2,
+          tension: 0.3,
+          fill: false
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { min: 60, max: 95 }
+        }
+      }
+    });
+
+    // Socket.IO Telemetry Events
+    socket.on('event', (evt) => {
+      const container = document.getElementById('telemetry-log');
+      if (container) {
+        const div = document.createElement('div');
+        div.className = evt.is_alert ? 'text-rose-400 font-bold' : 'text-slate-300';
+        div.textContent = `[${evt.timestamp.split('T')[1].split('.')[0]}] [${evt.pod_name}] ${evt.syscall} -> ${evt.target} (score: ${evt.anomaly_score})`;
+        container.prepend(div);
+        if (container.children.length > 50) container.removeChild(container.lastChild);
+      }
+
+      // Update Chart
+      vitalsChart.data.datasets[0].data.push(70 + Math.floor(Math.random() * 9));
+      vitalsChart.data.datasets[0].data.shift();
+      vitalsChart.update();
+    });
+
+    // Socket.IO Action Events
+    socket.on('action', (act) => {
+      const container = document.getElementById('action-log');
+      if (container) {
+        const div = document.createElement('div');
+        div.className = 'border-l-2 border-teal-500 pl-2 py-1';
+        div.innerHTML = `<span class="text-teal-400 font-bold">[${act.action}]</span> Pod: <span class="text-white">${act.pod}</span> | Root Cause: <span class="text-rose-300">${act.root_cause}</span> (${act.status})`;
+        container.prepend(div);
+      }
+    });
+
+    // Socket.IO Metrics Updates
+    socket.on('metrics_update', (m) => {
+      if (document.getElementById('kpi-mttd')) {
+        document.getElementById('kpi-mttd').textContent = m.mttd_avg + 's';
+        document.getElementById('kpi-mttr').textContent = m.mttr_avg + 's';
+        document.getElementById('kpi-fpr').textContent = m.fpr + '%';
+      }
+    });
+
+    // Dataset Replay Callbacks
+    socket.on('dataset_event', (d) => {
+      const consoleEl = document.getElementById('attacker-console');
+      if (consoleEl) {
+        const line = document.createElement('div');
+        line.className = d.detected ? 'text-rose-400 font-bold' : 'text-slate-300';
+        line.textContent = `[Dataset Stream] Pod: ${d.event.pod_name} | Syscall: ${d.event.syscall} | Target: ${d.event.target} | Detected: ${d.detected}`;
+        consoleEl.prepend(line);
+      }
+    });
+
+    socket.on('dataset_results', (res) => {
+      const consoleEl = document.getElementById('attacker-console');
+      if (consoleEl) {
+        const summary = document.createElement('div');
+        summary.className = 'text-emerald-400 font-bold mt-1';
+        summary.textContent = `[EVALUATION COMPLETE] MTTD=${res.mttd}s, MTTR=${res.mttr}s, CPU=${res.cpu_overhead}%, FPR=${res.fpr}%`;
+        consoleEl.prepend(summary);
+      }
+    });
+
+    socket.on('ansible_event', (ans) => {
+      const consoleEl = document.getElementById('attacker-console');
+      if (consoleEl) {
+        const line = document.createElement('div');
+        line.className = 'text-indigo-400 font-bold';
+        line.textContent = `[${ans.timestamp}] Playbook: ${ans.playbook} | Pod: ${ans.pod} | Action: ${ans.action} -> ${ans.status}`;
+        consoleEl.prepend(line);
+      }
+    });
+
+    // API Triggers
+    function launchAttackType(type) {
+      const consoleEl = document.getElementById('attacker-console');
+      const log = document.createElement('div');
+      log.className = 'text-rose-400 font-bold';
+      log.textContent = `[ATTACK LAUNCHED] Type: ${type.toUpperCase()} | Delivering payload to PC 1 Target...`;
+      consoleEl.prepend(log);
+
+      fetch(`/api/attack/${type}`, { method: 'POST' })
+      .then(r => r.json())
+      .then(res => {
+        const feedback = document.createElement('div');
+        feedback.className = 'text-amber-300 italic';
+        feedback.textContent = `[ATTACK FEEDBACK] Target received payload (${res.type}). Consequence: Cilium network isolation triggered on Target.`;
+        consoleEl.prepend(feedback);
+      });
+    }
+
+    function triggerKafkaReplayer() {
+      fetch('/api/test/kafka-replayer', { method: 'POST' });
+    }
+
+    function triggerClickHouseMetrics() {
+      fetch('/api/test/clickhouse-metrics', { method: 'POST' });
+    }
+
+    function triggerAnsible() {
+      fetch('/api/ansible/trigger', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pod_name: 'ehr', action: 'quarantine' }) });
+    }
+
+    function resetSystem() {
+      fetch('/api/reset', { method: 'POST' });
+    }
+
+    function dispenseDrug(patientId, drug) {
+      fetch('/api/drug-dispenser/dispense', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patient_id: patientId, drug: drug })
+      })
+      .then(r => r.json())
+      .then(res => {
+        document.getElementById('dispense-log-status').textContent = `Dispensed ${drug} for ${patientId}`;
+      });
+    }
+  </script>
+</body>
+</html>

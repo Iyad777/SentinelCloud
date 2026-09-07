@@ -1,0 +1,78 @@
+# SentinelCloud-Advanced: Dual-PC NodePort Manifests
+# Target PC 1 IP: 192.168.1.100
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vitals-service-nodeport
+  namespace: medical
+  labels:
+    app: vitals
+spec:
+  type: NodePort
+  selector:
+    app: vitals
+  ports:
+    - port: 5000
+      targetPort: 5000
+      nodePort: 30080
+      protocol: TCP
+      name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drug-dispenser-nodeport
+  namespace: medical
+  labels:
+    app: drug-dispenser
+spec:
+  type: NodePort
+  selector:
+    app: drug-dispenser
+  ports:
+    - port: 5001
+      targetPort: 5001
+      nodePort: 30081
+      protocol: TCP
+      name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ehr-service-nodeport
+  namespace: medical
+  labels:
+    app: ehr
+spec:
+  type: NodePort
+  selector:
+    app: ehr
+  ports:
+    - port: 5002
+      targetPort: 5002
+      nodePort: 30082
+      protocol: TCP
+      name: http
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-service-nodeport
+  namespace: medical
+  labels:
+    app: billing
+spec:
+  type: NodePort
+  selector:
+    app: billing
+  ports:
+    - port: 5003
+      targetPort: 5003
+      nodePort: 30083
+      protocol: TCP
+      name: http
