@@ -96,12 +96,6 @@ export default function LoginPage() {
             {loading ? 'Authenticating...' : 'Sign In to Command Center'}
           </button>
         </form>
-
-        <div className="p-3 bg-muted/40 rounded-lg border border-border text-[11px] text-muted-foreground space-y-1">
-          <span className="font-semibold text-foreground block">Default SOC Credentials:</span>
-          <div>Username: <code className="text-foreground">admin</code></div>
-          <div>Password: <code className="text-foreground">sentinel-admin-2026</code></div>
-        </div>
       </div>
     </div>
   );

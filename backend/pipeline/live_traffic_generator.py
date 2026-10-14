@@ -125,7 +125,8 @@ class LiveTrafficGenerator:
         self.running = False
         self.thread: Optional[threading.Thread] = None
 
-        # Attack interval configuration (variable 45 to 80 seconds)
+        # Attack interval configuration (auto-attacks disabled per user request)
+        self.enable_auto_attacks = False
         self.min_attack_interval = 45.0
         self.max_attack_interval = 80.0
         self.next_attack_interval = random.uniform(self.min_attack_interval, self.max_attack_interval)
@@ -138,7 +139,7 @@ class LiveTrafficGenerator:
         self.last_attack_time = time.time()
         self.thread = threading.Thread(target=self._run_loop, daemon=True, name="LiveTrafficGenerator")
         self.thread.start()
-        logger.info("Live clinical telemetry & attack generator started (Next attack in ~%.1fs)", self.next_attack_interval)
+        logger.info("Live clinical telemetry generator started (automated demo attacks: OFF)")
 
     def stop(self):
         self.running = False
@@ -152,20 +153,22 @@ class LiveTrafficGenerator:
             try:
                 now = time.time()
 
-                # Check if it's time for an attack scenario
-                time_since_attack = now - self.last_attack_time
-                any_pod_under_attack = any(
-                    s.status in (ServiceStatus.DEGRADED, ServiceStatus.QUARANTINED, ServiceStatus.REDEPLOYING)
-                    for s in self.pipeline.services.values()
-                )
+                if self.enable_auto_attacks:
+                    time_since_attack = now - self.last_attack_time
+                    any_pod_under_attack = any(
+                        s.status in (ServiceStatus.DEGRADED, ServiceStatus.QUARANTINED, ServiceStatus.REDEPLOYING)
+                        for s in self.pipeline.services.values()
+                    )
 
-                if time_since_attack >= self.next_attack_interval and not any_pod_under_attack:
-                    self._execute_random_attack()
-                    self.last_attack_time = time.time()
-                    self.next_attack_interval = random.uniform(self.min_attack_interval, self.max_attack_interval)
-                    logger.info("Next cyber-attack scheduled in ~%.1f seconds", self.next_attack_interval)
+                    if time_since_attack >= self.next_attack_interval and not any_pod_under_attack:
+                        self._execute_random_attack()
+                        self.last_attack_time = time.time()
+                        self.next_attack_interval = random.uniform(self.min_attack_interval, self.max_attack_interval)
+                        logger.info("Next cyber-attack scheduled in ~%.1f seconds", self.next_attack_interval)
+                    else:
+                        self._emit_normal_event()
                 else:
-                    # Emit normal clinical telemetry event
+                    # Emit normal clinical telemetry event only
                     self._emit_normal_event()
 
                 # Variable rate: sleep between 1.2s and 2.8s
