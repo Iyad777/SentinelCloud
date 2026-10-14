@@ -10,7 +10,9 @@
     and proc.name in (bash, sh, zsh, dash, python3, python)
     and container.name in (ehr, vitals, billing, drug-dispenser,
       sentinel-cloud-ehr-1, sentinel-cloud-vitals-1,
-      sentinel-cloud-billing-1, sentinel-cloud-drug-dispenser-1)
+      sentinel-cloud-billing-1, sentinel-cloud-drug-dispenser-1,
+      sentinel-services-ehr-1, sentinel-services-vitals-1,
+      sentinel-services-billing-1, sentinel-services-drug-dispenser-1)
   output: >
     Shell spawned in medical container
     (container=%container.name proc=%proc.name args=%proc.args evt=%evt.type)
@@ -35,7 +37,9 @@
     evt.type = connect and container and fd.sport = 445
     and container.name in (ehr, vitals, billing, drug-dispenser,
       sentinel-cloud-ehr-1, sentinel-cloud-vitals-1,
-      sentinel-cloud-billing-1, sentinel-cloud-drug-dispenser-1)
+      sentinel-cloud-billing-1, sentinel-cloud-drug-dispenser-1,
+      sentinel-services-ehr-1, sentinel-services-vitals-1,
+      sentinel-services-billing-1, sentinel-services-drug-dispenser-1)
   output: >
     SMB connection from medical container
     (container=%container.name dest=%fd.sip:445 proc=%proc.name)

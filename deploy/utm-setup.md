@@ -86,8 +86,9 @@ docker compose up -d vitals ehr billing drug-dispenser
 docker ps --format '{{.Names}}'
 ```
 
-Expect container names like `sentinel-cloud-ehr-1` (these match both the
-Falco rules and the Phase 3 Docker remediation candidate list).
+Expect container names like `sentinel-services-ehr-1` (the folder name
+becomes the compose project prefix). The Falco rules and remediation
+candidate list match both `sentinel-cloud-*` and `sentinel-services-*`.
 
 ## 8. Enable the receiver on the Mac backend (.env)
 
@@ -107,8 +108,9 @@ curl http://localhost:5050/api/falco/status
 ## 9. End-to-end test
 
 ```bash
-# In the VM — trigger a shell-spawn rule:
-docker exec sentinel-cloud-ehr-1 sh -c 'whoami || /bin/bash -c whoami'
+# In the VM — trigger a shell-spawn rule (use your actual container name
+# from `docker ps`, e.g. sentinel-services-ehr-1):
+docker exec sentinel-services-ehr-1 sh -c 'whoami'
 # On the Mac dashboard: threats page should show a RULE badge
 # (SHELL_001) with source=falco, data_mode=live.
 # VM check: sudo journalctl -u falco | tail — should show the alert JSON.
