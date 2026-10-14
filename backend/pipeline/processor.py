@@ -25,6 +25,7 @@ from backend.core.event_schema import (
     DataMode,
 )
 from backend.pipeline.detector import StreamingAnomalyDetector
+from backend.pipeline.rule_engine import rule_engine
 from backend.pipeline.diagnoser import DiagnosisEngine
 from backend.pipeline.orchestrator import MAPEKOrchestrator
 from backend.persistence.sqlite_store import sqlite_store
@@ -179,14 +180,28 @@ class SentinelPipeline:
         self.events.append(event)
         self.diagnoser.add_event(event)
 
-        # 2. ML Detection
+        # 2. ML Detection (pure HalfSpaceTrees + HMM — no rule overrides)
         detection = self.detector.process(event)
+
+        # 2b. Rule-based detection (separate, explicit signature engine)
+        # Runs independently; never alters the ML score. Records which
+        # detector(s) fired in detection_method: RULE_MATCH | ML_ANOMALY | BOTH | NONE
+        rule_match = rule_engine.evaluate(event)
+        ml_fired = detection.is_anomaly or detection.is_sequence_anomaly
+        if rule_match is not None:
+            detection.rule_id = rule_match.rule_id
+            detection.rule_name = rule_match.rule_name
+            detection.mitre_technique = rule_match.mitre_technique_id
+            detection.detection_method = "BOTH" if ml_fired else "RULE_MATCH"
+        # else: keep detector.py's ML_ANOMALY / NONE label as-is
+
+        is_alert = ml_fired or (rule_match is not None)
 
         # Enrich the event with detection results
         event.anomaly_score = detection.anomaly_score
         event.hmm_log_prob = detection.hmm_log_prob
-        event.is_alert = detection.is_anomaly or detection.is_sequence_anomaly
-        event.explanation = detection.explanation
+        event.is_alert = is_alert
+        event.explanation = rule_match.explanation if rule_match else detection.explanation
         event.feature_vector = detection.feature_vector
 
         self.detections.append(detection)
@@ -217,7 +232,10 @@ class SentinelPipeline:
             elif event.syscall_name == "sys_sendto" and ("exfil" in (event.target or "") or event.port == 53):
                 svc.last_activity_type = "DNS Exfiltration"
                 svc.last_activity_desc = "Data exfiltration via DNS tunnel"
-            elif detection.is_anomaly or detection.is_sequence_anomaly:
+            elif rule_match is not None:
+                svc.last_activity_type = rule_match.rule_name
+                svc.last_activity_desc = rule_match.explanation
+            elif ml_fired:
                 svc.last_activity_type = "Anomalous Behavior"
                 svc.last_activity_desc = detection.explanation or "Deviation from statistical baseline"
             else:
@@ -225,7 +243,7 @@ class SentinelPipeline:
                 svc.last_activity_desc = f"{event.syscall_name or 'Syscall'} by {event.binary or 'service'}"
 
             # If normal and healthy, ensure monitoring state and broadcast live activity
-            if not (detection.is_anomaly or detection.is_sequence_anomaly) and svc.status == ServiceStatus.HEALTHY:
+            if not is_alert and svc.status == ServiceStatus.HEALTHY:
                 svc.active_threat = None
                 svc.mapek_phase = "Normal Monitoring"
                 if self._on_service_update:
@@ -244,13 +262,15 @@ class SentinelPipeline:
         if self._on_detection:
             self._on_detection(detection)
 
-        # 3. If alert: full pipeline
-        if detection.is_anomaly or detection.is_sequence_anomaly:
+        # 3. If alert (ML OR rule): full pipeline
+        if is_alert:
             self._alert_count += 1
             logger.warning(
-                "ALERT: pod=%s score=%.4f hmm=%.4f | %s",
+                "ALERT: pod=%s score=%.4f hmm=%.4f method=%s%s | %s",
                 event.pod_name, detection.anomaly_score,
-                detection.hmm_log_prob or 0.0, detection.explanation,
+                detection.hmm_log_prob or 0.0, detection.detection_method,
+                f" rule={detection.rule_id}" if detection.rule_id else "",
+                event.explanation,
             )
 
             # Create incident

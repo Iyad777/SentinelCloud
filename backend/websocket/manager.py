@@ -87,7 +87,12 @@ async def broadcast_event(event: TelemetryEvent):
 
 async def broadcast_detection(detection: DetectionResult):
     """Push detection result to all connected clients."""
-    if detection.is_anomaly or detection.is_sequence_anomaly:
+    is_alert = (
+        detection.is_anomaly
+        or detection.is_sequence_anomaly
+        or detection.detection_method in ("RULE_MATCH", "BOTH")
+    )
+    if is_alert:
         await sio.emit("detection_alert", detection.model_dump(mode="json"))
     else:
         await sio.emit("detection_result", detection.model_dump(mode="json"))

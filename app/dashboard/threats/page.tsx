@@ -19,6 +19,35 @@ interface Detection {
   namespace?: string;
   model_name?: string;
   status?: string;
+  detection_method?: string;
+  rule_id?: string;
+  rule_name?: string;
+  mitre_technique?: string;
+}
+
+function getMethodBadge(method?: string) {
+  switch (method) {
+    case 'RULE_MATCH':
+      return (
+        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-orange-950/70 border border-orange-800 text-orange-300">
+          RULE
+        </span>
+      );
+    case 'BOTH':
+      return (
+        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-red-950/80 border border-red-700 text-red-200">
+          BOTH
+        </span>
+      );
+    case 'ML_ANOMALY':
+      return (
+        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-blue-950/70 border border-blue-800 text-blue-300">
+          ML
+        </span>
+      );
+    default:
+      return null;
+  }
 }
 
 export default function ThreatsPage() {
@@ -207,6 +236,12 @@ export default function ThreatsPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       {getSeverityBadge(d.anomaly_score)}
+                      {getMethodBadge(d.detection_method)}
+                      {d.rule_id && (
+                        <span className="px-2 py-0.5 text-xs font-mono rounded bg-secondary text-secondary-foreground" title={d.rule_name || d.rule_id}>
+                          {d.rule_id}{d.mitre_technique ? ` · ${d.mitre_technique}` : ''}
+                        </span>
+                      )}
                       {isRemediated ? (
                         <span className="px-2 py-0.5 text-xs font-semibold rounded bg-emerald-950/70 border border-emerald-800 text-emerald-400 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> REMEDIATED
