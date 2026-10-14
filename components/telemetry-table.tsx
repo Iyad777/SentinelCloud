@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useSocket } from './socket-provider';
 import { LoadingSpinner } from './loading-spinner';
@@ -21,17 +21,29 @@ export interface TelemetryEvent {
   data_mode?: string;
 }
 
+function mergeEvents(prev: TelemetryEvent[], incoming: TelemetryEvent[], limit: number): TelemetryEvent[] {
+  const map = new Map<string, TelemetryEvent>();
+  for (const event of [...incoming, ...prev]) {
+    if (event?.event_id) map.set(event.event_id, event);
+  }
+  return Array.from(map.values())
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, limit);
+}
+
 export function TelemetryTable({ limit = 20 }: { limit?: number }) {
   const [events, setEvents] = useState<TelemetryEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const { socket } = useSocket();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followLiveRef = useRef(true);
 
   useEffect(() => {
     const fetchTelemetry = () => {
       api.get<{ events: TelemetryEvent[] }>(`/api/telemetry/recent?limit=${limit}`)
         .then((data) => {
           if (data.events && data.events.length > 0) {
-            setEvents(data.events);
+            setEvents((prev) => mergeEvents(prev, data.events, limit));
           }
         })
         .catch(() => {})
@@ -46,7 +58,7 @@ export function TelemetryTable({ limit = 20 }: { limit?: number }) {
   useEffect(() => {
     if (!socket) return;
     const handler = (event: TelemetryEvent) => {
-      setEvents((prev) => [event, ...prev].slice(0, limit));
+      setEvents((prev) => mergeEvents(prev, [event], limit));
     };
     socket.on('telemetry_event', handler);
     return () => {
@@ -54,14 +66,28 @@ export function TelemetryTable({ limit = 20 }: { limit?: number }) {
     };
   }, [socket, limit]);
 
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !followLiveRef.current) return;
+    el.scrollTop = 0;
+  }, [events]);
+
   if (loading) return <LoadingSpinner />;
   if (!events.length) return <EmptyState message="No telemetry events yet" subtitle="Awaiting eBPF kernel telemetry stream" />;
 
   return (
-    <div className="overflow-x-auto border border-border rounded-lg bg-card">
+    <div
+      ref={scrollRef}
+      onScroll={() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        followLiveRef.current = el.scrollTop < 48;
+      }}
+      className="max-h-[28rem] overflow-y-auto overflow-x-auto overscroll-contain border border-border rounded-lg bg-card"
+    >
       <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-muted/40 text-left text-muted-foreground text-xs uppercase tracking-wider">
+        <thead className="sticky top-0 z-10">
+          <tr className="border-b border-border bg-muted text-left text-muted-foreground text-xs uppercase tracking-wider">
             <th className="p-2.5">Time</th>
             <th className="p-2.5">Provenance</th>
             <th className="p-2.5">Pod</th>

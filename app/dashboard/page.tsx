@@ -174,7 +174,7 @@ export default function DashboardOverviewPage() {
           <h2 className="text-lg font-semibold text-foreground">Live Telemetry Ingestion</h2>
           <span className="text-xs text-muted-foreground">Real-time eBPF/Tetragon Stream</span>
         </div>
-        <TelemetryTable limit={15} />
+        <TelemetryTable limit={150} />
       </div>
     </div>
   );
