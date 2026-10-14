@@ -8,6 +8,7 @@ import { ServiceCard, ServiceInfo } from '@/components/service-card';
 import { TelemetryTable } from '@/components/telemetry-table';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Sparkline, DonutChart } from '@/components/charts';
+import { ResilienceRadar } from '@/components/resilience-radar';
 
 export default function DashboardOverviewPage() {
   const [metrics, setMetrics] = useState<any>(null);
@@ -107,6 +108,9 @@ export default function DashboardOverviewPage() {
         <MetricCard label="Avg MTTD" value={metrics?.mttd_label ?? 'N/A'} sublabel={metrics?.mttd_samples ? `${metrics.mttd_samples} sample(s)` : 'No alerts recorded'} />
         <MetricCard label="Avg MTTR" value={metrics?.mttr_label ?? 'N/A'} sublabel={metrics?.mttr_samples ? `${metrics.mttr_samples} sample(s)` : 'No recoveries recorded'} />
       </div>
+
+      {/* Five Core Cyber-Resilience Dimensions Radar (Live Updating) */}
+      <ResilienceRadar metrics={metrics} />
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
