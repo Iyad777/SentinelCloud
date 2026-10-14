@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     docker_remediation_enabled: bool = Field(default=True)
     docker_compose_project: str = Field(default="sentinel-cloud")
 
+    # ── Falco (UTM Ubuntu VM webhook receiver) ──
+    falco_enabled: bool = Field(default=False, description="Enable Falco webhook receiver")
+    falco_webhook_token: str = Field(default="", description="Optional shared secret for Falco webhook auth")
+
     # ── Prometheus ──
     prometheus_enabled: bool = Field(default=True)
 

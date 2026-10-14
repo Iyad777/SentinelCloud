@@ -1,0 +1,77 @@
+# SentinelCloud custom Falco rules for medical microservice containers.
+# Covers the 7 PC2 attack scenarios. Install on the UTM Ubuntu VM:
+#   sudo cp sentinel_rules.yaml /etc/falco/rules.d/
+# Then restart falco: sudo systemctl restart falco
+
+- rule: Unauthorized shell in medical container
+  desc: A shell was spawned inside a medical microservice container
+  condition: >
+    spawned_process and container
+    and proc.name in (bash, sh, zsh, dash, python3, python)
+    and container.name in (ehr, vitals, billing, drug-dispenser,
+      sentinel-cloud-ehr-1, sentinel-cloud-vitals-1,
+      sentinel-cloud-billing-1, sentinel-cloud-drug-dispenser-1)
+  output: >
+    Shell spawned in medical container
+    (container=%container.name proc=%proc.name args=%proc.args evt=%evt.type)
+  priority: WARNING
+  tags: [shell, T1059.004]
+
+- rule: Suspicious file rename in medical container
+  desc: A file was renamed with a ransomware-like extension
+  condition: >
+    evt.type in (rename, renameat) and container
+    and (fd.name endswith .locked or fd.name endswith .encrypted
+      or fd.name endswith .crypto or fd.name endswith .enc)
+  output: >
+    Suspicious file rename in medical container
+    (container=%container.name file=%fd.name proc=%proc.name)
+  priority: CRITICAL
+  tags: [ransomware, T1486]
+
+- rule: SMB connection attempt in medical container
+  desc: Container attempted an SMB connection on port 445
+  condition: >
+    evt.type = connect and container and fd.sport = 445
+    and container.name in (ehr, vitals, billing, drug-dispenser,
+      sentinel-cloud-ehr-1, sentinel-cloud-vitals-1,
+      sentinel-cloud-billing-1, sentinel-cloud-drug-dispenser-1)
+  output: >
+    SMB connection from medical container
+    (container=%container.name dest=%fd.sip:445 proc=%proc.name)
+  priority: WARNING
+  tags: [lateral_movement, T1021.002]
+
+- rule: Reverse shell port in medical container
+  desc: Outbound connection to a known reverse-shell / C2 port
+  condition: >
+    evt.type = connect and container
+    and fd.sport in (4444, 1337, 8888, 5555, 6666)
+  output: >
+    Possible reverse shell from medical container
+    (container=%container.name dest=%fd.sip sport=%fd.sport proc=%proc.name)
+  priority: CRITICAL
+  tags: [backdoor, T1071]
+
+- rule: Suspicious DNS query from medical container
+  desc: Possible DNS tunnelling / data exfiltration via port 53
+  condition: >
+    evt.type = connect and container and fd.sport = 53
+    and (fd.name contains exfil or fd.name contains tunnel
+      or fd.name contains c2 or fd.name contains attacker)
+  output: >
+    Suspicious DNS query from medical container
+    (container=%container.name query=%fd.name proc=%proc.name)
+  priority: WARNING
+  tags: [exfil, T1071.004]
+
+- rule: Recon tool in medical container
+  desc: Network scanning / reconnaissance tool executed in container
+  condition: >
+    spawned_process and container
+    and proc.name in (nmap, nc, netcat, masscan, nikto, hydra, sqlmap)
+  output: >
+    Recon tool executed in medical container
+    (container=%container.name proc=%proc.name args=%proc.args)
+  priority: WARNING
+  tags: [recon, T1046]

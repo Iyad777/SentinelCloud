@@ -564,6 +564,8 @@ async def reset_scenarios(user=Depends(get_current_user)):
 
 # ── Collect all routers ──
 
+from backend.integrations.falco_receiver import falco_router
+
 all_routers = [
     auth_router,
     health_router,
@@ -576,4 +578,5 @@ all_routers = [
     audit_router,
     lab_router,
     scenarios_router,
+    falco_router,
 ]

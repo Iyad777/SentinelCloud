@@ -1,0 +1,17 @@
+# Falco webhook output config for SentinelCloud (UTM Ubuntu VM side).
+# Copy to /etc/falco/falco.yaml (merge the http_output section), replacing
+# <PC1-IP> with your Mac's LAN IP, then: sudo systemctl restart falco
+#
+# Requires Falco >= 0.36 with HTTP output support.
+
+json_output: true
+json_include_output_property: true
+log_level: info
+
+http_output:
+  enabled: true
+  url: "http://<PC1-IP>:5050/api/falco/webhook"
+  user_agent: "falco"
+  # If you set SENTINEL_FALCO_WEBHOOK_TOKEN on the Mac backend, uncomment:
+  # custom_headers:
+  #   X-Falco-Token: "<same-token>"
