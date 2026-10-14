@@ -30,6 +30,7 @@ requests==2.32.3
 python-dotenv==1.1.0
 python-multipart==0.0.20
 psutil>=5.9.0          # real CPU/memory monitoring
+docker>=7.0.0            # Docker SDK for Python (container stop/start)
 
 # Testing
 pytest==8.3.5

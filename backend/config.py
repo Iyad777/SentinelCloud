@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     drug_dispenser_log_path: str = Field(default="./data/dispenser.log")
     log_tail_enabled: bool = Field(default=True)
 
+    # ── Docker remediation ──
+    docker_remediation_enabled: bool = Field(default=True)
+    docker_compose_project: str = Field(default="sentinel-cloud")
+
     # ── Prometheus ──
     prometheus_enabled: bool = Field(default=True)
 

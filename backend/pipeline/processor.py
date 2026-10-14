@@ -323,29 +323,26 @@ class SentinelPipeline:
 
             # MAPE-K remediation (in background thread to not block)
             def run_mapek():
-                # Phase 1: Service is under active attack (DEGRADED) for 3s
-                time.sleep(3)
-
+                # Phase transitions are driven by real Docker operations —
+                # no artificial sleeps; timing comes from stop/restart calls.
                 # Phase 2: MAPE-K isolates/quarantines pod to stop spread
                 if event.pod_name in self.services:
                     svc = self.services[event.pod_name]
                     svc.status = ServiceStatus.QUARANTINED
-                    svc.mapek_phase = "Phase 2: Isolating pod via Cilium NetworkPolicy"
+                    svc.mapek_phase = "Phase 2: Isolating — stopping container"
                     if self._on_service_update:
                         self._on_service_update(event.pod_name, svc)
 
-                time.sleep(3)
                 action = self.orchestrator.execute_loop(diagnosis, incident)
 
                 # Phase 3: Redeploying clean replica
                 if event.pod_name in self.services:
                     svc = self.services[event.pod_name]
                     svc.status = ServiceStatus.REDEPLOYING
-                    svc.mapek_phase = "Phase 3: Rolling out clean container image"
+                    svc.mapek_phase = "Phase 3: Restarting container (redeploy)"
                     if self._on_service_update:
                         self._on_service_update(event.pod_name, svc)
 
-                time.sleep(3)
                 # Phase 4: Service restored to HEALTHY, threat neutralized!
                 if action.service_restored and event.pod_name in self.services:
                     svc = self.services[event.pod_name]

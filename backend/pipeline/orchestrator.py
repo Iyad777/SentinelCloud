@@ -303,15 +303,92 @@ class MAPEKOrchestrator:
                         incident: Incident) -> bool:
         """
         Execute remediation action.
-        In DEV mode: records the action but does not touch infrastructure.
-        In LAB/LIVE mode: executes real K8s/Cilium operations.
+        Tries real Docker container stop/restart first (works in DEV and LAB
+        when services run under Docker Compose); falls back to a recorded
+        action when no container is found. K8s path used when enabled.
         """
-        if settings.is_dev:
-            return self._execute_dev_mode(action_type, pod_name, namespace, action, incident)
-        elif settings.kubernetes_enabled:
+        if settings.kubernetes_enabled:
             return self._execute_k8s_mode(action_type, pod_name, namespace, is_critical, action, incident)
-        else:
-            return self._execute_dev_mode(action_type, pod_name, namespace, action, incident)
+        if getattr(settings, "docker_remediation_enabled", True):
+            return self._execute_docker_mode(action_type, pod_name, namespace, action, incident)
+        return self._execute_dev_mode(action_type, pod_name, namespace, action, incident)
+
+    def _execute_docker_mode(self, action_type: str, pod_name: str, namespace: str,
+                             action: MitigationAction, incident: Incident) -> bool:
+        """
+        Docker mode: stop (quarantine) then restart (redeploy) the container
+        via the Docker SDK. Real timing — no artificial sleeps.
+        Graceful fallback to a recorded action when Docker or the container
+        is unavailable (e.g. plain-process DEV runs).
+        """
+        project = getattr(settings, "docker_compose_project", "sentinel-cloud")
+        candidates = [f"{project}-{pod_name}-1", f"sentinel-{pod_name}-1", pod_name]
+        try:
+            import docker
+            from docker.errors import NotFound
+        except ImportError:
+            action.details = f"[DEV MODE] docker SDK not installed — {action_type} recorded for {pod_name}"
+            incident.timeline.append(IncidentTimelineEntry(
+                phase="execute",
+                title=f"[DEV] {action_type} on {pod_name}",
+                detail="docker package not installed; action recorded only",
+                source_service="mape_k_orchestrator",
+                target_service=pod_name,
+            ))
+            return True
+        try:
+            client = docker.from_env()
+            container = None
+            container_name = candidates[0]
+            for name in candidates:
+                try:
+                    container = client.containers.get(name)
+                    container_name = name
+                    break
+                except NotFound:
+                    continue
+            if container is None:
+                action.details = (
+                    f"[DEV MODE] Docker container not found ({'/'.join(candidates)}) "
+                    f"— {action_type} recorded for {pod_name}"
+                )
+                incident.timeline.append(IncidentTimelineEntry(
+                    phase="execute",
+                    title=f"[DEV] {action_type} on {pod_name}",
+                    detail="No Docker container matched; action recorded only",
+                    source_service="mape_k_orchestrator",
+                    target_service=pod_name,
+                ))
+                return True
+            container.stop(timeout=5)
+            action.details = f"Container {container_name} stopped (quarantine). "
+            incident.timeline.append(IncidentTimelineEntry(
+                phase="execute",
+                title=f"Container {container_name} stopped (quarantine)",
+                detail=f"{action_type} on {pod_name}",
+                source_service="docker_engine",
+                target_service=pod_name,
+            ))
+            container.restart(timeout=10)
+            action.details += f"Container {container_name} restarted (redeploy). "
+            container.reload()
+            if container.status == "running":
+                action.service_restored = True
+                action.details += "Service confirmed healthy post-restart."
+                incident.timeline.append(IncidentTimelineEntry(
+                    phase="execute",
+                    title=f"Container {container_name} restarted (redeploy)",
+                    detail="Service confirmed running post-restart",
+                    source_service="docker_engine",
+                    target_service=pod_name,
+                ))
+                return True
+            action.error = f"Container {container_name} status after restart: {container.status}"
+            return False
+        except Exception as e:
+            logger.error("Docker remediation failed: %s", e)
+            action.error = str(e)
+            return False
 
     def _execute_dev_mode(self, action_type: str, pod_name: str, namespace: str,
                           action: MitigationAction, incident: Incident) -> bool:
