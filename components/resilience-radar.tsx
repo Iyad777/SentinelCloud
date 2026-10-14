@@ -98,12 +98,9 @@ export function ResilienceRadar({ metrics }: ResilienceRadarProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-border/60 gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
-            <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
-              <span className="text-emerald-500">⚡</span> SentinelCloud Resultant Cyber-Resilience Radar
+            <h2 className="text-lg font-bold tracking-tight text-foreground">
+              SentinelCloud Resultant Cyber-Resilience Radar
             </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 uppercase">
-              ALL TARGETS PASS
-            </span>
           </div>
           <p className="text-xs text-muted-foreground">
             Holistic platform evaluation across the 5 core resilience dimensions.
@@ -244,13 +241,6 @@ export function ResilienceRadar({ metrics }: ResilienceRadarProps) {
                   Grade: A+ (Autonomous Self-Healing)
                 </span>
               </div>
-            </div>
-
-            <div className="text-right">
-              <span className="px-3 py-1 rounded-md text-xs font-bold bg-emerald-500 text-white shadow-xs inline-block">
-                ✔ VERIFIED (ALL PASS)
-              </span>
-              <div className="text-[10px] text-muted-foreground mt-1">Verified on medical testbed</div>
             </div>
           </div>
 

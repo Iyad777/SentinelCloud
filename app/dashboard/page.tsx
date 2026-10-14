@@ -109,9 +109,6 @@ export default function DashboardOverviewPage() {
         <MetricCard label="Avg MTTR" value={metrics?.mttr_label ?? 'N/A'} sublabel={metrics?.mttr_samples ? `${metrics.mttr_samples} sample(s)` : 'No recoveries recorded'} />
       </div>
 
-      {/* Five Core Cyber-Resilience Dimensions Radar (Live Updating) */}
-      <ResilienceRadar metrics={metrics} />
-
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Anomaly Score Sparkline */}
@@ -176,6 +173,9 @@ export default function DashboardOverviewPage() {
         </div>
         <TelemetryTable limit={15} />
       </div>
+
+      {/* Five Core Cyber-Resilience Dimensions Radar (Live Updating) */}
+      <ResilienceRadar metrics={metrics} />
     </div>
   );
 }
