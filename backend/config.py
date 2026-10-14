@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # ── Server ──
     host: str = Field(default="0.0.0.0")
-    port: int = Field(default=5050)
+    port: int = Field(default_factory=lambda: int(os.environ.get("PORT", 5050)))
     debug: bool = Field(default=False)
     secret_key: str = Field(
         default="CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32",
@@ -39,8 +39,8 @@ class Settings(BaseSettings):
 
     # ── CORS ──
     cors_origins: str = Field(
-        default="http://localhost:3000,http://localhost:5050",
-        description="Comma-separated list of allowed CORS origins"
+        default="http://localhost:3000,http://localhost:5050,*",
+        description="Comma-separated list of allowed CORS origins or *"
     )
 
     # ── Kafka ──

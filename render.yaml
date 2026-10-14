@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: sentinel-cloud-backend
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: ./scripts/render-start.sh
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: SENTINEL_MODE
+        value: dev
+      - key: SENTINEL_CORS_ORIGINS
+        value: "*"
