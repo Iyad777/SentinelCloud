@@ -149,6 +149,6 @@ def list_records():
     return jsonify({"count": len(ehr_store), "patient_ids": list(ehr_store.keys())}), 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5002))
+    port = int(os.environ.get("EHR_PORT", 5002))
     logger.info("Starting EHR service", extra={"extra_fields": {"port": port}})
     app.run(host="0.0.0.0", port=port)

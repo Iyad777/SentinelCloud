@@ -151,6 +151,6 @@ def inventory():
     return jsonify({"inventory": drug_inventory}), 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5001))
+    port = int(os.environ.get("DISPENSER_PORT", 5001))
     logger.info("Starting Drug Dispenser service", extra={"extra_fields": {"port": port}})
     app.run(host="0.0.0.0", port=port)

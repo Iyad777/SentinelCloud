@@ -143,6 +143,6 @@ def list_invoices():
     return jsonify({"count": len(invoices_store), "invoices": invoices_store[-50:]}), 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5003))
+    port = int(os.environ.get("BILLING_PORT", 5003))
     logger.info("Starting Billing service", extra={"extra_fields": {"port": port}})
     app.run(host="0.0.0.0", port=port)

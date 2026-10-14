@@ -155,6 +155,6 @@ def get_vitals():
     }), 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("VITALS_PORT", 5000))
     logger.info("Starting Vitals service", extra={"extra_fields": {"port": port}})
     app.run(host="0.0.0.0", port=port)
