@@ -21,6 +21,7 @@ Remediation Actions:
 Safety Interlocks:
   - For critical pods, wait up to 3s for a backup replica before termination
   - Manual override HTTP endpoint: POST /override/{alert_name}
+  - HTTP-triggered remediation endpoint: POST /remediate
 """
 
 import os
@@ -31,6 +32,7 @@ import logging
 import threading
 import asyncio
 from datetime import datetime, timezone
+from collections import deque
 
 import kopf
 import yaml
@@ -61,13 +63,19 @@ logger = logging.getLogger("mape-k-controller")
 # Track overridden alerts (alert_name -> True)
 overridden_alerts = {}
 
+# In-memory recent actions store (for REST inspection and tracking)
+recent_actions = deque(maxlen=100)
+
 # ---------------------------------------------------------------------------
 # Kubernetes Client Setup
 # ---------------------------------------------------------------------------
 try:
     k8s_config.load_incluster_config()
 except Exception:
-    k8s_config.load_kube_config()
+    try:
+        k8s_config.load_kube_config()
+    except Exception:
+        pass
 
 core_v1 = k8s_client.CoreV1Api()
 apps_v1 = k8s_client.AppsV1Api()
@@ -164,7 +172,6 @@ def get_pod_owner_deployment(pod_name: str, namespace: str) -> str:
         pod = core_v1.read_namespaced_pod(name=pod_name, namespace=namespace)
         for ref in (pod.metadata.owner_references or []):
             if ref.kind == "ReplicaSet":
-                # Get the ReplicaSet to find the Deployment
                 rs = apps_v1.read_namespaced_replica_set(name=ref.name, namespace=namespace)
                 for rs_ref in (rs.metadata.owner_references or []):
                     if rs_ref.kind == "Deployment":
@@ -199,7 +206,6 @@ def action_quarantine_only(pod_name: str, namespace: str) -> bool:
     """Apply a Cilium NetworkPolicy that denies all ingress/egress."""
     logger.info("ACTION: QuarantineOnly for %s/%s", namespace, pod_name)
 
-    # First, label the pod as suspect
     try:
         core_v1.patch_namespaced_pod(
             name=pod_name,
@@ -210,7 +216,6 @@ def action_quarantine_only(pod_name: str, namespace: str) -> bool:
         logger.error("Failed to label pod as suspect: %s", e)
         return False
 
-    # Apply deny-all Cilium NetworkPolicy
     policy = {
         "apiVersion": "cilium.io/v2",
         "kind": "CiliumNetworkPolicy",
@@ -262,13 +267,7 @@ def action_redeploy(pod_name: str, namespace: str) -> bool:
 
 
 def action_failover_and_quarantine(pod_name: str, namespace: str) -> bool:
-    """
-    For critical services:
-    1. Ensure a healthy replica exists.
-    2. Update the service selector to exclude the suspect pod.
-    3. Quarantine the suspect pod.
-    4. Delete the suspect pod.
-    """
+    """For critical services: ensure healthy replica, quarantine, redeploy."""
     logger.info("ACTION: FailoverAndQuarantine for %s/%s", namespace, pod_name)
 
     deployment_name = get_pod_owner_deployment(pod_name, namespace)
@@ -277,12 +276,10 @@ def action_failover_and_quarantine(pod_name: str, namespace: str) -> bool:
                        pod_name)
         return action_quarantine_only(pod_name, namespace)
 
-    # Safety interlock: ensure at least one replica is ready
     logger.info("Safety interlock: waiting for ready replica of %s", deployment_name)
     if not wait_for_ready_replica(deployment_name, namespace, SAFETY_TIMEOUT_SECONDS):
         logger.error("SAFETY ABORT: No ready replicas for %s within %ds – will not terminate pod",
                      deployment_name, SAFETY_TIMEOUT_SECONDS)
-        # Still quarantine but don't delete
         action_quarantine_only(pod_name, namespace)
         log_action(
             alert_name="", pod_name=pod_name, namespace=namespace,
@@ -292,10 +289,7 @@ def action_failover_and_quarantine(pod_name: str, namespace: str) -> bool:
         )
         return False
 
-    # Quarantine the suspect
     quarantine_ok = action_quarantine_only(pod_name, namespace)
-
-    # Delete the suspect pod (controller will recreate)
     if quarantine_ok:
         action_redeploy(pod_name, namespace)
 
@@ -312,13 +306,11 @@ def action_restart_dependency(pod_name: str, namespace: str) -> bool:
         return False
 
     try:
-        # Get current replicas
         dep = apps_v1.read_namespaced_deployment(
             name=deployment_name, namespace=namespace
         )
         original_replicas = dep.spec.replicas or 1
 
-        # Scale down
         apps_v1.patch_namespaced_deployment_scale(
             name=deployment_name,
             namespace=namespace,
@@ -327,7 +319,6 @@ def action_restart_dependency(pod_name: str, namespace: str) -> bool:
         logger.info("Scaled down %s to 0", deployment_name)
         time.sleep(2)
 
-        # Scale back up
         apps_v1.patch_namespaced_deployment_scale(
             name=deployment_name,
             namespace=namespace,
@@ -355,7 +346,7 @@ def select_action(root_cause: str, is_critical: bool) -> str:
     elif root_cause == "network_partition":
         return "quarantine_only"
     else:
-        return "quarantine_only"  # Default safe action
+        return "quarantine_only"
 
 
 def execute_action(action: str, pod_name: str, namespace: str) -> bool:
@@ -371,6 +362,66 @@ def execute_action(action: str, pod_name: str, namespace: str) -> bool:
         logger.error("Unknown action: %s", action)
         return False
     return func(pod_name, namespace)
+
+
+# ---------------------------------------------------------------------------
+# Direct Remediation Function (called by HTTP endpoint /remediate)
+# ---------------------------------------------------------------------------
+def run_remediation(pod_name: str, namespace: str, alert_name: str = "http-triggered"):
+    """
+    Execute the full MAPE-K loop without waiting for a CRD.
+    Returns a dictionary with timestamps and results.
+    """
+    start_time = datetime.now(timezone.utc)
+    logger.info("HTTP-triggered remediation for %s/%s (alert=%s)", namespace, pod_name, alert_name)
+
+    # ANALYSE
+    diagnosis = call_diagnosis(pod_name, namespace)
+    root_cause = diagnosis.get("root_cause", "unknown")
+    confidence = diagnosis.get("confidence", 0.0)
+    evidence = diagnosis.get("evidence", [])
+    logger.info("Diagnosis: %s (confidence=%.3f)", root_cause, confidence)
+
+    # PLAN
+    is_critical = is_pod_critical(pod_name, namespace)
+    action = select_action(root_cause, is_critical)
+    logger.info("Selected action: %s (critical=%s)", action, is_critical)
+
+    # EXECUTE
+    execution_start = datetime.now(timezone.utc)
+    success = execute_action(action, pod_name, namespace)
+    execution_end = datetime.now(timezone.utc)
+    duration_ms = (execution_end - execution_start).total_seconds() * 1000
+
+    # KNOWLEDGE
+    log_action(alert_name=alert_name, pod_name=pod_name, namespace=namespace,
+               action_type=action, root_cause=root_cause,
+               details=json.dumps({"confidence": confidence, "evidence": evidence}),
+               success=success)
+
+    action_record = {
+        "alert_name": alert_name,
+        "pod_name": pod_name,
+        "namespace": namespace,
+        "action_type": action,
+        "root_cause": root_cause,
+        "confidence": confidence,
+        "success": success,
+        "started_at": start_time.isoformat(),
+        "completed_at": execution_end.isoformat(),
+        "duration_ms": duration_ms,
+    }
+    recent_actions.append(action_record)
+
+    return {
+        "action": action,
+        "root_cause": root_cause,
+        "success": success,
+        "mttd_ms": 0,
+        "mttr_ms": duration_ms,
+        "started_at": action_record["started_at"],
+        "completed_at": action_record["completed_at"],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +446,6 @@ def on_alert_created(spec, name, namespace, **kwargs):
         name, pod_name, alert_ns, anomaly_score, source,
     )
 
-    # Check for manual override
     if name in overridden_alerts:
         logger.info("Alert %s has been manually overridden – skipping", name)
         return {"action": "overridden"}
@@ -421,11 +471,15 @@ def on_alert_created(spec, name, namespace, **kwargs):
     )
 
     # ── EXECUTE ──
+    execution_start = datetime.now(timezone.utc)
     logger.info("[EXECUTE] Executing action: %s on %s/%s", action, alert_ns, pod_name)
     success = execute_action(action, pod_name, alert_ns)
+    execution_end = datetime.now(timezone.utc)
+    duration_ms = (execution_end - execution_start).total_seconds() * 1000
+
     logger.info(
-        "[EXECUTE] Action %s: %s",
-        action, "SUCCESS" if success else "FAILED",
+        "[EXECUTE] Action %s: %s (%.1fms)",
+        action, "SUCCESS" if success else "FAILED", duration_ms,
     )
 
     # ── KNOWLEDGE ──
@@ -445,7 +499,19 @@ def on_alert_created(spec, name, namespace, **kwargs):
         success=success,
     )
 
-    # Update the SecurityAlert status
+    recent_actions.append({
+        "alert_name": name,
+        "pod_name": pod_name,
+        "namespace": alert_ns,
+        "action_type": action,
+        "root_cause": root_cause,
+        "confidence": confidence,
+        "success": success,
+        "started_at": execution_start.isoformat(),
+        "completed_at": execution_end.isoformat(),
+        "duration_ms": duration_ms,
+    })
+
     try:
         custom_api.patch_namespaced_custom_object_status(
             group="sentinel.io",
@@ -477,7 +543,7 @@ def on_alert_created(spec, name, namespace, **kwargs):
 
 
 # ---------------------------------------------------------------------------
-# Manual Override HTTP API (runs in a separate thread)
+# Manual Override & Remediation HTTP API (runs in background thread)
 # ---------------------------------------------------------------------------
 override_app = Flask("mape-k-override")
 
@@ -488,7 +554,30 @@ def health():
         "service": "mape-k-controller",
         "status": "healthy",
         "overridden_alerts": len(overridden_alerts),
+        "recent_actions_count": len(recent_actions),
     }), 200
+
+
+@override_app.route("/remediate", methods=["POST"])
+def remediate():
+    """Trigger immediate remediation for a pod via HTTP."""
+    data = flask_request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    pod_name = data.get("pod_name")
+    namespace = data.get("namespace", "medical")
+    if not pod_name:
+        return jsonify({"error": "pod_name is required"}), 400
+    alert_name = data.get("alert_name", f"http-{int(time.time())}")
+    logger.info("HTTP remediate request for %s/%s (alert=%s)", namespace, pod_name, alert_name)
+    result = run_remediation(pod_name, namespace, alert_name)
+    return jsonify(result), 200
+
+
+@override_app.route("/actions", methods=["GET"])
+def list_actions():
+    """Return recent remediation actions."""
+    return jsonify({"actions": list(recent_actions)}), 200
 
 
 @override_app.route("/override/<alert_name>", methods=["POST"])
@@ -528,11 +617,8 @@ def run_override_api():
 # Entry Point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Start the manual override API in a background thread
     api_thread = threading.Thread(target=run_override_api, daemon=True)
     api_thread.start()
-    logger.info("Manual override API started on port %d", OVERRIDE_PORT)
-
-    # Kopf will be started via `kopf run` command or embedded
+    logger.info("Manual override and remediation API started on port %d", OVERRIDE_PORT)
     logger.info("MAPE-K Controller starting…")
     logger.info("Watching for SecurityAlert resources on sentinel.io/v1")

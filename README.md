@@ -1,285 +1,276 @@
-# SentinelCloud‑Advanced
-## eBPF‑Driven Autonomous Cyber‑Resilience for Medical Microservices
+# SentinelCloud-Advanced
+## eBPF-Driven Autonomous Cyber-Resilience for Medical Microservices
 
-> A research prototype that protects a medical microservice cluster (K3s) against multi‑stage ransomware attacks using layered eBPF monitoring, streaming ML anomaly detection, causal diagnosis, and autonomous MAPE‑K remediation.
+## Overview
+SentinelCloud-Advanced is a comprehensive cyber-resilience platform that protects critical medical microservices against advanced threats such as ransomware, lateral movement, and data exfiltration. It combines real-time telemetry (eBPF/Tetragon/Falco), streaming machine learning anomaly detection, causal root-cause diagnosis, and autonomous remediation using the MAPE-K control loop.
 
----
-
-## Table of Contents
-
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Detailed Setup](#detailed-setup)
-- [Running the Attack Simulation](#running-the-attack-simulation)
-- [Metrics & Evaluation](#metrics--evaluation)
-- [Components](#components)
-- [Configuration](#configuration)
-
----
+The system operates in three modes:
+- **LIVE**: Full Kubernetes cluster with real infrastructure (Tetragon, Kafka, ClickHouse, Cilium).
+- **LAB**: Local Docker Compose environment with real services and containerized dependencies.
+- **DEV**: Single-machine development mode with in-process ML and simulated remediation.
 
 ## Architecture
+See [docs/architecture.md](docs/architecture.md) for detailed design and diagrams.
 
-The system is organised into **four planes**:
+## Quick Start
 
-| Plane | Components | Purpose |
-|-------|-----------|---------|
-| **Observability** | Tetragon, Falco, DNSObelisk, Inspektor Gadget | eBPF-based syscall monitoring, DNS inspection |
-| **Intelligence** | Online iForest, HMM, ExIFFI, Diagnosis Service | Anomaly detection, explainability, causal diagnosis |
-| **Enforcement** | MAPE-K Controller, Cilium NPs | Autonomous remediation (quarantine, failover, redeploy) |
-| **Assurance** | OPA/Gatekeeper, Kata Containers (optional) | Policy verification, confidential computing |
+### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- Docker & Docker Compose (for LAB mode)
 
-### Data Flow
+### DEV Mode (No Docker)
+1. Set up backend virtual environment and dependencies:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r backend/requirements.txt
+   ```
 
+2. Install frontend dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Launch both backend and frontend using the unified developer runner:
+   ```bash
+   ./scripts/dev-start.sh
+   # or
+   ./start_range.sh
+   ```
+
+4. Access the dashboard:
+   - **Command Center**: [http://localhost:3000](http://localhost:3000)
+   - **Backend API**: [http://localhost:5050](http://localhost:5050)
+   - **API Docs**: [http://localhost:5050/docs](http://localhost:5050/docs)
+   - Default credentials: `admin` / `sentinel-admin-2026`
+
+---
+
+### LAB Mode (Docker Compose)
+1. Ensure Docker is running.
+2. Start the complete lab environment:
+   ```bash
+   ./scripts/lab-start.sh
+   ```
+   This launches:
+   - Zookeeper (:2181), Kafka (:9092), ClickHouse (:8123, :9000)
+   - Medical microservices: vitals (:5000), drug-dispenser (:5001), ehr (:5002), billing (:5003)
+   - Intelligence services: anomaly-detector (:8080), diagnosis (:8081), MAPE-K controller (:8083)
+   - SentinelCloud backend (:5050)
+
+3. Check health across all services:
+   ```bash
+   ./scripts/health-check.sh
+   ```
+
+4. Stop all services when finished:
+   ```bash
+   ./scripts/stop-all.sh
+   ```
+
+---
+
+## Running Tests
+
+Execute the automated test suite with pytest:
+
+```bash
+# Unit tests
+pytest tests/unit -v
+
+# API tests
+pytest tests/api -v
+
+# Integration tests (skips automatically if services are offline)
+pytest -m integration tests/integration -v
+
+# Run all non-integration tests
+pytest -m "not integration" -v
 ```
-Tetragon/Falco → Kafka → Anomaly Detector (iForest + HMM)
-                                ↓
-                        SecurityAlert CRD
-                                ↓
-                   MAPE-K Controller (kopf)
-                      ↓            ↓
-               Diagnosis      Execute Action
-               Service      (Quarantine/Redeploy)
-                                ↓
-                          ClickHouse (logs)
+
+---
+
+## Running Attack Simulations
+
+Use the testing harness to safely simulate attack kill-chains:
+
+```bash
+python3 testing/harness.py --scenario recon --target-pod ehr --target-namespace medical
 ```
+
+Available scenarios in `testing/scenarios/`:
+- `recon` – Network port scanning
+- `shell_exec` – Unauthorized shell spawn
+- `lateral_movement` – SMB probing on port 445
+- `file_encryption` – Canary file renaming to `.locked`
+- `dns_exfil` – High-volume DNS exfiltration tunneling
+- `auth_bruteforce` – Repeated authentication failure
+- `ransomware` – Complete 4-stage kill-chain
 
 ---
 
 ## Project Structure
 
-```
-FINAL PROJECT V2/
-├── deploy/
-│   ├── sentinel-chart/          # Helm umbrella chart
-│   │   ├── Chart.yaml
-│   │   ├── values.yaml
-│   │   └── templates/           # K8s resource templates
-│   ├── manifests/               # Standalone K8s manifests
-│   │   ├── securityalert-crd.yaml
-│   │   ├── medical-services.yaml
-│   │   └── sentinel-services.yaml
-│   ├── setup-infrastructure.sh  # One-command infra setup
-│   └── build-images.sh          # Docker build script
+```text
+sentinel-cloud/
+├── backend/          # FastAPI + Socket.IO backend (auth, ML pipeline, routes)
+├── app/              # Next.js 15 Resilience Dashboard (React, Tailwind v4)
+├── components/       # Shared UI components (metric cards, telemetry table, etc.)
 ├── services/
-│   ├── medical/                 # Mock medical microservices
-│   │   ├── vitals/              # Patient vital signs (critical)
-│   │   ├── drug-dispenser/      # Drug dispensing (critical)
-│   │   ├── ehr/                 # Electronic Health Records
-│   │   └── billing/             # Invoice management
-│   ├── intelligence/            # Detection & analysis
-│   │   ├── streaming-anomaly-detector/  # iForest + HMM + ExIFFI
-│   │   ├── diagnosis-service/   # Causal root-cause analysis
-│   │   └── tetragon-kafka-forwarder/    # eBPF event collector
-│   └── orchestrator/
-│       └── mape-k-controller/   # Autonomous remediation controller
-├── policies/
-│   ├── cilium/                  # Cilium NetworkPolicy definitions
-│   │   └── baseline-policies.yaml
-│   └── opa-gatekeeper/          # Rego policies + Gatekeeper constraints
-│       ├── deny-smb-egress.rego
-│       ├── deny-external-ingress.rego
-│       ├── deny-host-network.rego
-│       └── constraints.yaml
-├── simulation/
-│   ├── attack-scripts/          # Multi-stage ransomware simulator
-│   │   ├── ransomware_simulator.py
-│   │   ├── Dockerfile
-│   │   └── attack-job.yaml
-│   ├── metrics/                 # MTTD, MTTR, AUC, FPR collection
-│   │   └── collect_metrics.py
-│   └── benign_traffic_generator.py
+│   ├── medical/      # Medical microservices (vitals, ehr, drug-dispenser, billing)
+│   ├── intelligence/ # Streaming anomaly detector & diagnosis service
+│   └── orchestrator/ # MAPE-K remediation controller
+├── testing/          # Lab testing harness and attack scenarios
+├── tests/            # Automated test suite (unit, api, integration)
+├── deploy/           # Kubernetes manifests & Helm charts
+├── policies/         # Cilium, Falco, OPA Gatekeeper policies
+├── scripts/          # Control scripts (dev-start, lab-start, health-check, stop-all)
+├── docker-compose.yml# Complete local LAB stack
+├── docs/             # Technical and architectural documentation
 └── README.md
 ```
 
----
+## Two-PC Network Deployment (Demonstration Architecture)
 
-## Prerequisites
+The primary live demonstration uses two computers connected over a local private area network (LAN):
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| Ubuntu | 22.04 LTS | Host OS |
-| K3s | v1.28+ | Kubernetes distribution |
-| Helm | v3+ | Package manager |
-| Docker | 24+ | Container building |
-| Python | 3.11+ | Intelligence plane |
-| kubectl | matching K3s | Cluster management |
+- **PC1 (Target & Defender)**: Runs the SentinelCloud SOC dashboard (:3000), FastAPI backend (:5050), in-process or containerized ML anomaly detector, SQLite persistence, and MAPE-K autonomous resilience controller.
+- **PC2 (Authorized External Test Client)**: Runs the lightweight standalone test client (`testing/pc2_client.py`). PC2 does not need Node.js, Next.js, or heavyweight dependencies.
 
 ---
 
-## Quick Start
+### Step 1: Set Up PC1 (Defender / Target)
 
-### 1. Set up infrastructure (one command)
+1. Find PC1's local LAN IP address:
+   ```bash
+   # On macOS:
+   ipconfig getifaddr en0
+   # On Linux:
+   hostname -I | awk '{print $1}'
+   ```
+   *(Example: `192.168.1.100`)*
 
+2. Configure environment on PC1 (`.env`):
+   ```bash
+   cp .env.example .env
+   ```
+   Ensure `SENTINEL_HOST=0.0.0.0` and `SENTINEL_PORT=5050`.
+
+3. Ensure incoming firewall permits ports `5050` (Backend API & WebSocket) and `3000` (Dashboard):
+   - **macOS**: System Settings → Network → Firewall → Allow incoming connections for Python and Node.
+   - **Linux (ufw)**: `sudo ufw allow 5050/tcp && sudo ufw allow 3000/tcp`
+
+4. Launch the platform on PC1:
+   ```bash
+   ./start_range.sh
+   # or
+   ./scripts/dev-start.sh
+   ```
+   Both the Backend (`http://0.0.0.0:5050`) and Next.js Dashboard (`http://0.0.0.0:3000`) will bind to all network interfaces.
+
+5. Open the SOC Dashboard in a browser on PC1:
+   - URL: `http://localhost:3000`
+   - Log in with default credentials: `admin` / `sentinel-admin-2026`
+
+---
+
+### Step 2: Set Up PC2 (Authorized Test Client)
+
+PC2 requires only Python 3 and the `requests` library.
+
+1. Install client dependencies on PC2:
+   ```bash
+   pip install requests
+   ```
+
+2. Configure the client using environment variables or `testing/pc2_config.json`:
+   ```bash
+   cp testing/pc2_config.example.json testing/pc2_config.json
+   ```
+   Edit `testing/pc2_config.json` and set `"pc1_api_url"` to PC1's LAN IP:
+   ```json
+   {
+     "pc1_api_url": "http://192.168.1.100:5050",
+     "username": "admin",
+     "password": "sentinel-admin-2026",
+     "timeout_seconds": 10
+   }
+   ```
+
+3. Test reachability to PC1 over the LAN:
+   ```bash
+   python3 testing/pc2_client.py --pc1-url http://192.168.1.100:5050 --check
+   ```
+   Expected output:
+   `✔ PC1 is reachable! RTT Latency: 4.2ms | Mode: dev | Service: sentinel-backend`
+
+4. Verify secure authentication with PC1:
+   ```bash
+   python3 testing/pc2_client.py --pc1-url http://192.168.1.100:5050 --auth
+   ```
+   Expected output:
+   `✔ Authenticated successfully on PC1 as 'admin' (role: admin)`
+
+---
+
+### Step 3: Run Controlled Scenarios from PC2
+
+List all available scenarios:
 ```bash
-chmod +x deploy/setup-infrastructure.sh
-sudo ./deploy/setup-infrastructure.sh
+python3 testing/pc2_client.py --list-scenarios
 ```
 
-This installs: K3s → Cilium → Tetragon → Falco → Gatekeeper → Kafka → ClickHouse → CRDs → Network Policies.
-
-### 2. Build and push Docker images
-
+#### Scenario A: Unauthorized Shell Execution in EHR Container
 ```bash
-chmod +x deploy/build-images.sh
-./deploy/build-images.sh sentinelcloud  # or your registry
+python3 testing/pc2_client.py --pc1-url http://192.168.1.100:5050 --scenario shell_exec --target-pod ehr
 ```
+*What happens:*
+- PC2 submits an authorized `sys_execve` event with `/bin/bash`
+- PC1 ML pipeline flags the anomaly (score ~0.895)
+- Incident is automatically opened on PC1
+- MAPE-K quarantines the pod, rolls out a clean container, and verifies health
+- PC2 observes the recovery and outputs an evidence verification table
 
-### 3. Deploy SentinelCloud
-
+#### Scenario B: Multi-Stage Ransomware Kill Chain
 ```bash
-# Using Helm chart
-helm install sentinel ./deploy/sentinel-chart
-
-# Or using standalone manifests
-kubectl apply -f deploy/manifests/securityalert-crd.yaml
-kubectl apply -f deploy/manifests/medical-services.yaml
-kubectl apply -f deploy/manifests/sentinel-services.yaml
-kubectl apply -f policies/cilium/baseline-policies.yaml
-kubectl apply -f policies/opa-gatekeeper/constraints.yaml
+python3 testing/pc2_client.py --pc1-url http://192.168.1.100:5050 --scenario ransomware --target-pod ehr --save-report results/ransomware_evidence.json
 ```
+*What happens:*
+- PC2 simulates the 4-stage kill chain:
+  1. Initial shell spawn (`sys_execve`)
+  2. Database encryption and rename (`sys_rename` -> `.locked`)
+  3. Lateral movement pivot to billing (`sys_connect` -> port 445 SMB)
+  4. DNS exfiltration tunnel (`sys_sendto` -> port 53)
+- PC1 detects high-severity anomaly (score ~0.984)
+- MAPE-K executes failover & quarantine, restores the service to healthy
+- PC2 verifies post-mitigation service restoration and records the evidence report
 
-### 4. Generate benign baseline traffic (train models)
-
+#### Scenario C: Network Reconnaissance Scan
 ```bash
-# Run for at least 1 hour to train the HMM
-python simulation/benign_traffic_generator.py --duration 60 --rate 10
-```
-
-### 5. Run the attack simulation
-
-```bash
-# Option A: As a Kubernetes Job
-kubectl apply -f simulation/attack-scripts/attack-job.yaml
-
-# Option B: Exec into a medical pod
-kubectl exec -it $(kubectl get pods -n medical -l app=ehr -o name | head -1) -n medical -- \
-    python /tmp/ransomware_simulator.py --file-count 100
-```
-
-### 6. Collect metrics
-
-```bash
-python simulation/metrics/collect_metrics.py --output-dir ./results
+python3 testing/pc2_client.py --pc1-url http://192.168.1.100:5050 --scenario recon --target-pod vitals
 ```
 
 ---
 
-## Detailed Setup
+## Operating Environment & Telemetry Notes
 
-### For Local Development (Minikube)
+- **macOS Development**:
+  Linux kernel eBPF probes and Cilium/Tetragon kernel hooks require a Linux host. On macOS, the platform runs in `DEV` mode: all telemetry ingestion, real ML streaming anomaly detection (HalfSpaceTrees + HMM), root-cause diagnosis, and MAPE-K lifecycle logic execute with complete mathematical and architectural fidelity in-process.
+- **Linux / Kubernetes Deployment**:
+  In a Linux or Kubernetes cluster with Tetragon deployed, telemetry events stream directly from kernel probes via the Tetragon-Kafka forwarder.
+- **Event Provenance**:
+  All events are explicitly labeled in the UI and data model:
+  - `API Test (PC2)`: Injected by the external authorized test client
+  - `Replay`: Streamed from benchmark datasets (ADFA-LD / BETH)
+  - `Kernel eBPF`: Captured directly by Tetragon or kernel probes
+  - `Telemetry Stream`: Normal clinical workload simulation
 
-```bash
-# Start minikube with enough resources
-minikube start --cpus=4 --memory=8192 --cni=false --driver=docker
-
-# Install Cilium
-helm install cilium cilium/cilium --namespace kube-system \
-    --set ipam.mode=kubernetes \
-    --set policyEnforcementMode=always
-
-# Continue with Step 2+ from Quick Start
-```
-
-### For 3-Node K3s Cluster
-
-```bash
-# On control-plane node:
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--flannel-backend=none --disable-network-policy" sh -
-
-# Get the token:
-sudo cat /var/lib/rancher/k3s/server/node-token
-
-# On worker nodes:
-curl -sfL https://get.k3s.io | K3S_URL=https://<MASTER_IP>:6443 K3S_TOKEN=<TOKEN> sh -
-```
-
----
-
-## Running the Attack Simulation
-
-The ransomware simulator executes a **4-stage kill chain**:
-
-| Stage | Action | Detection Trigger |
-|-------|--------|-------------------|
-| 1 | Shell execution (`/bin/sh`) | `sys_execve` → iForest high score |
-| 2 | SMB lateral movement (port 445) | `sys_connect` → Cilium deny + iForest |
-| 3 | File encryption (`.json` → `.locked`) | `sys_rename` → iForest + HMM sequence |
-| 4 | DNS exfiltration (TXT queries) | DNSObelisk block + DNS topic alert |
-
-### Expected Response
-
-1. **Anomaly Detector** catches the shell exec → anomaly score > 0.75
-2. **SecurityAlert CRD** is created automatically
-3. **MAPE-K Controller** receives the alert → calls Diagnosis Service
-4. **Diagnosis** returns `root_cause: compromise`
-5. **Controller** executes `FailoverAndQuarantine` (for critical pods) or `Redeploy` (non-critical)
-6. Pod is quarantined via Cilium NP and then redeployed from golden image
-
----
-
-## Metrics & Evaluation
-
-| Metric | Target | Description |
-|--------|--------|-------------|
-| MTTD | ≤ 2s | Time from first malicious syscall to alert |
-| MTTR | ≤ 45s | Time from alert to pod restoration |
-| CPU Overhead | ≤ 5% | eBPF + ML processing overhead |
-| AUC-ROC | ≥ 0.95 | Detection accuracy |
-| FPR | ≤ 1% | False positive rate over 24h |
-
----
-
-## Components
-
-### Intelligence Plane
-
-- **Online Isolation Forest** (`river.anomaly.HalfSpaceTrees`): Streaming anomaly detection that adapts to evolving traffic. Processes events one-at-a-time with O(1) update complexity.
-- **Hidden Markov Model** (`hmmlearn.GaussianHMM`): Detects attack sequences (kill chains) that individual events might not trigger. Uses a sliding window of 10 events.
-- **ExIFFI Explainability**: Computes per-feature contribution to anomaly scores. Explains *why* an event is suspicious (e.g., "68% due to .locked file extension").
-- **Diagnosis Service**: Rule-based causal analysis querying ClickHouse for recent pod events. Classifies root cause as `compromise`, `dependency_failure`, `network_partition`, or `unknown`.
-
-### Enforcement Plane
-
-The **MAPE-K Controller** (built with `kopf`) autonomously remediates threats:
-
-| Root Cause | Critical Pod | Action |
-|-----------|-------------|--------|
-| compromise | Yes | FailoverAndQuarantine |
-| compromise | No | Redeploy |
-| dependency_failure | Any | RestartDependency |
-| network_partition | Any | QuarantineOnly |
-
-Safety interlocks prevent service disruption: before terminating a critical pod, the controller waits up to 3 seconds for a backup replica.
-
-### Assurance Plane
-
-OPA/Gatekeeper enforces three invariants as admission webhooks:
-1. No egress to port 445 (SMB) from medical namespace
-2. No external ingress (0.0.0.0/0) except via Ingress controller
-3. No `hostNetwork: true` in medical namespace
-
----
-
-## Configuration
-
-All services are configurable via environment variables:
-
-| Variable | Default | Service |
-|----------|---------|---------|
-| `IFOREST_THRESHOLD` | 0.75 | Anomaly Detector |
-| `HMM_THRESHOLD` | -5.0 | Anomaly Detector |
-| `HMM_WINDOW_SIZE` | 10 | Anomaly Detector |
-| `LOOKBACK_SECONDS` | 60 | Diagnosis Service |
-| `SAFETY_TIMEOUT_SECONDS` | 3 | MAPE-K Controller |
-| `KAFKA_BOOTSTRAP` | kafka.sentinel:9092 | All producers/consumers |
-| `CLICKHOUSE_HOST` | clickhouse.sentinel:9000 | All writers/readers |
-
-Override these in `deploy/sentinel-chart/values.yaml` for Helm deployments.
-
----
+## Security & Resilience Guarantees
+- **Authentication**: JWT with bcrypt hashing and role-based access.
+- **Observability**: Prometheus metrics at `/metrics` and structured JSON logs.
+- **Safety**: Safety boundary validation via `SAFETY_ALLOWED_CIDRS` (`safety.py`).
+- **Honest Metrics**: Real MTTD/MTTR calculations based on event timestamps (no mocked or random values).
 
 ## License
-
-This is a research prototype for academic purposes.
+Proprietary — Developed for research and demonstration purposes.

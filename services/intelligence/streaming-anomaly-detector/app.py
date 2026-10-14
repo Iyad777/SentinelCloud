@@ -2,14 +2,17 @@
 SentinelCloud-Advanced: Streaming Anomaly Detector
 ---------------------------------------------------
 Intelligence Plane – core detection service.
+Adds REST endpoints for direct event processing and model status.
 
 Responsibilities:
-1. Consume syscall events from Kafka topic 'syscalls'.
+1. Consume syscall events from Kafka topic 'syscalls' (if Kafka is enabled).
 2. Run Online Isolation Forest (river) for point anomaly detection.
 3. Run ExIFFI explainability for high-score events.
 4. Run HMM (hmmlearn) sliding-window sequence detection.
 5. Push enriched events + anomaly scores to ClickHouse.
 6. Create SecurityAlert CRD when thresholds are breached.
+7. Expose REST endpoints (/process, /status, /explain, /score, /health, /metrics)
+   for direct invocation by the unified backend.
 """
 
 import os
@@ -23,8 +26,8 @@ from datetime import datetime, timezone
 from collections import deque
 
 import numpy as np
-from flask import Flask, jsonify
-from kafka import KafkaConsumer, KafkaProducer
+from flask import Flask, jsonify, request
+from kafka import KafkaConsumer
 from river import anomaly as river_anomaly
 from hmmlearn import hmm
 from clickhouse_driver import Client as CHClient
@@ -52,8 +55,10 @@ IFOREST_N_TREES = int(os.environ.get("IFOREST_N_TREES", "100"))
 IFOREST_WINDOW_SIZE = int(os.environ.get("IFOREST_WINDOW_SIZE", "500"))
 
 MODEL_SAVE_PATH = os.environ.get("MODEL_SAVE_PATH", "/data/models")
-
 PORT = int(os.environ.get("PORT", "8080"))
+
+# Whether to enable Kafka consumer (can be disabled for pure REST mode)
+KAFKA_ENABLED = os.environ.get("KAFKA_ENABLED", "true").lower() == "true"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("streaming-anomaly-detector")
@@ -137,8 +142,6 @@ class ExIFFIExplainer:
         Compute approximate feature contributions.
         Uses a perturbation-based approach: for each feature, replace with
         a neutral value and observe score change.
-        
-        Returns: dict of feature_name -> contribution percentage
         """
         if anomaly_score <= 0:
             return {fn: 0.0 for fn in self.feature_names}
@@ -148,9 +151,7 @@ class ExIFFIExplainer:
 
         for fname in self.feature_names:
             val = features.get(fname, 0)
-            # Features further from zero contribute more to anomaly
             importance = abs(val) * (1.0 + anomaly_score)
-            # Special boosting for known attack indicators
             if fname == "file_ext_encoded" and val == FILE_EXT_MAP.get(".locked", -1):
                 importance *= 3.0
             if fname == "syscall_encoded" and val == SYSCALL_MAP.get("sys_execve", -1):
@@ -160,7 +161,6 @@ class ExIFFIExplainer:
             contributions[fname] = importance
             total_importance += importance
 
-        # Normalise to percentages
         if total_importance > 0:
             contributions = {k: round((v / total_importance) * 100, 2) for k, v in contributions.items()}
 
@@ -170,7 +170,7 @@ class ExIFFIExplainer:
         """Generate a human-readable explanation string."""
         sorted_contribs = sorted(contributions.items(), key=lambda x: x[1], reverse=True)[:top_n]
         parts = [f"{pct}% due to {fname}" for fname, pct in sorted_contribs]
-        return "; ".join(parts)
+        return "; ".join(parts) if parts else "No significant features"
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +223,7 @@ class HMMSequenceDetector:
 
         # Training buffer – collects normal data before fitting
         self.training_buffer = []
-        self.training_target = 1000  # events before first fit
+        self.training_target = 1000
         self.refit_interval = 5000
         self.events_since_fit = 0
 
@@ -255,12 +255,9 @@ class HMMSequenceDetector:
             logger.warning("HMM fitting failed: %s", e)
 
     def score_sequence(self) -> float:
-        """
-        Compute log-probability of the current window under the trained model.
-        Returns a large negative number for unlikely sequences.
-        """
+        """Compute log-probability of the current window."""
         if not self._trained or len(self.window) < self.window_size:
-            return 0.0  # Not enough data yet
+            return 0.0
 
         X = np.array(list(self.window))
         try:
@@ -524,7 +521,7 @@ def kafka_consumer_loop(pipeline: AnomalyDetectionPipeline):
                 group_id=KAFKA_GROUP_ID,
                 auto_offset_reset="latest",
                 value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-                consumer_timeout_ms=-1,  # block forever
+                consumer_timeout_ms=-1,
             )
             logger.info("Kafka consumer connected")
 
@@ -541,7 +538,7 @@ def kafka_consumer_loop(pipeline: AnomalyDetectionPipeline):
 
 
 # ---------------------------------------------------------------------------
-# Flask Health / Metrics API
+# Flask Health / Metrics / REST API
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
 pipeline = AnomalyDetectionPipeline()
@@ -564,24 +561,68 @@ def metrics():
     return generate_latest(), 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
-@app.route("/score", methods=["POST"])
-def score_event():
-    """Score a single event via REST (for testing)."""
-    from flask import request as flask_request
-    data = flask_request.get_json(force=True, silent=True)
+@app.route("/process", methods=["POST"])
+def process_event():
+    """Process a single event via REST and return enriched result."""
+    data = request.get_json(force=True, silent=True)
     if not data:
         return jsonify({"error": "Invalid JSON"}), 400
     result = pipeline.process_event(data)
     return jsonify(result), 200
 
 
+@app.route("/score", methods=["POST"])
+def score_event():
+    """Score a single event via REST (legacy endpoint alias for /process)."""
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    result = pipeline.process_event(data)
+    return jsonify(result), 200
+
+
+@app.route("/status", methods=["GET"])
+def status():
+    """Return detailed model status and configuration."""
+    return jsonify({
+        "model_name": "HalfSpaceTrees",
+        "model_version": "1.0.0",
+        "events_processed": pipeline.detector.event_count,
+        "hmm_trained": pipeline.hmm._trained,
+        "iforest_threshold": IFOREST_THRESHOLD,
+        "hmm_threshold": HMM_THRESHOLD,
+        "window_size": IFOREST_WINDOW_SIZE,
+        "hmm_window_size": HMM_WINDOW_SIZE,
+        "feature_names": pipeline.detector.feature_names,
+    }), 200
+
+
+@app.route("/explain", methods=["POST"])
+def explain_event():
+    """Explain an event given its feature dict or raw event."""
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+    if "features" in data:
+        features = data["features"]
+    else:
+        features = extract_features(data)
+    score = data.get("anomaly_score", 0.0)
+    contributions = pipeline.detector.explain(features, score)
+    return jsonify({
+        "contributions": contributions,
+        "explanation": pipeline.detector.explainer.top_explanation(contributions),
+    }), 200
+
+
 # ---------------------------------------------------------------------------
 # Entry Point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Start Kafka consumer in a background thread
-    consumer_thread = threading.Thread(target=kafka_consumer_loop, args=(pipeline,), daemon=True)
-    consumer_thread.start()
-
-    logger.info("Starting Streaming Anomaly Detector API on port %d", PORT)
+    if KAFKA_ENABLED:
+        consumer_thread = threading.Thread(target=kafka_consumer_loop, args=(pipeline,), daemon=True)
+        consumer_thread.start()
+        logger.info("Starting Streaming Anomaly Detector API with Kafka consumer on port %d", PORT)
+    else:
+        logger.info("Starting Streaming Anomaly Detector API (pure REST mode) on port %d", PORT)
     app.run(host="0.0.0.0", port=PORT)

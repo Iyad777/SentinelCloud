@@ -42,6 +42,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ransomware-simulator")
 
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "testing"))
+    from safety import check_safety
+except Exception:
+    check_safety = None
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -377,6 +383,11 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if check_safety and not check_safety(args.billing_host, args.billing_port):
+        logger.error("Safety check failed for target %s:%d", args.billing_host, args.billing_port)
+        sys.exit(1)
+
     sim = RansomwareSimulator(args)
 
     if args.stage == 0:

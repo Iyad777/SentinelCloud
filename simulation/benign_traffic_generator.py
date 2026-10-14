@@ -27,10 +27,10 @@ logger = logging.getLogger("benign-traffic")
 
 # Service endpoints (update for your environment)
 SERVICES = {
-    "vitals": os.environ.get("VITALS_URL", "http://vitals.medical.svc.cluster.local:5000"),
-    "drug-dispenser": os.environ.get("DRUG_DISPENSER_URL", "http://drug-dispenser.medical.svc.cluster.local:5001"),
-    "ehr": os.environ.get("EHR_URL", "http://ehr.medical.svc.cluster.local:5002"),
-    "billing": os.environ.get("BILLING_URL", "http://billing.medical.svc.cluster.local:5003"),
+    "vitals": os.environ.get("VITALS_URL", "http://localhost:5000"),
+    "drug-dispenser": os.environ.get("DRUG_DISPENSER_URL", "http://localhost:5001"),
+    "ehr": os.environ.get("EHR_URL", "http://localhost:5002"),
+    "billing": os.environ.get("BILLING_URL", "http://localhost:5003"),
 }
 
 DRUGS = ["aspirin", "morphine", "insulin", "amoxicillin", "metformin"]
