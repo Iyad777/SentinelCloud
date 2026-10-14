@@ -92,6 +92,13 @@ class Settings(BaseSettings):
     # ── Tetragon ──
     tetragon_enabled: bool = Field(default=False)
 
+    # ── Log Tail Paths (real HTTP access logs from medical services) ──
+    ehr_log_path: str = Field(default="./data/ehr.log")
+    vitals_log_path: str = Field(default="./data/vitals.log")
+    billing_log_path: str = Field(default="./data/billing.log")
+    drug_dispenser_log_path: str = Field(default="./data/dispenser.log")
+    log_tail_enabled: bool = Field(default=True)
+
     # ── Prometheus ──
     prometheus_enabled: bool = Field(default=True)
 

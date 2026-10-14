@@ -2,26 +2,27 @@
 SentinelCloud Detection Pipeline
 =================================
 Streaming anomaly detection using river HalfSpaceTrees + HMM sequence analysis.
-This is the REAL ML pipeline — scores come from actual model evaluation.
 
-When an external anomaly-detector service is available (K8s/Lab mode),
-delegates to it. Otherwise runs the models in-process.
+This module is a PURE ML detector. It scores events using:
+  1. HalfSpaceTrees (online streaming anomaly detection via the `river` library)
+  2. GaussianHMM sequence analysis (via `hmmlearn`)
+
+It does NOT contain signature rules or hardcoded scores. Rule-based detection
+is handled separately by `rule_engine.py`, which runs alongside this module
+in the pipeline and is recorded under a distinct `detection_method` label.
 """
 
-import time
-import math
 import hashlib
+import time
 import logging
 from collections import deque
-from typing import Optional
 
-import httpx
 import numpy as np
 from river import anomaly as river_anomaly
 
 from backend.config import settings
 from backend.core.event_schema import (
-    TelemetryEvent, DetectionResult, Severity, TelemetrySource, DataMode
+    TelemetryEvent, DetectionResult, TelemetrySource, DataMode
 )
 
 logger = logging.getLogger("sentinel.pipeline.detector")
@@ -238,13 +239,17 @@ class StreamingAnomalyDetector:
         self._seed_baseline()
 
     def _seed_baseline(self):
-        """Pre-warm HalfSpaceTrees with normal clinical workloads to establish healthy baseline bounds."""
+        """Pre-warm HalfSpaceTrees with synthetic baseline events to avoid cold-start score distortion.
+
+        These are clearly labelled as SYNTHETIC — they are not clinical telemetry.
+        Once real HTTP log events start flowing they will naturally update the model.
+        """
         from backend.pipeline.live_traffic_generator import CLINICAL_EVENTS
         for _ in range(15):
             for t in CLINICAL_EVENTS:
                 ev = TelemetryEvent(
                     source=TelemetrySource.HTTP_INGESTION,
-                    data_mode=DataMode.LIVE,
+                    data_mode=DataMode.SYNTHETIC,   # honest label: synthetic baseline
                     pod_name=t["pod_name"],
                     syscall_name=t["syscall_name"],
                     binary=t["binary"],
@@ -254,209 +259,41 @@ class StreamingAnomalyDetector:
                 )
                 self.model.learn_one(extract_features(ev))
 
-    def _call_external(self, event: TelemetryEvent) -> Optional[DetectionResult]:
-        """Call external anomaly detector if reachable."""
-        if not self._external_enabled:
-            return None
-        try:
-            resp = httpx.post(
-                f"{self._external_url}/process",
-                json={
-                    "pod_name": event.pod_name,
-                    "namespace": event.namespace,
-                    "syscall_name": event.syscall_name,
-                    "params": {
-                        "binary": event.binary,
-                        "target": event.target,
-                        "port": event.port,
-                        "size": event.payload_size,
-                    },
-                    "timestamp": event.timestamp.isoformat(),
-                },
-                timeout=5.0,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                score = float(data.get("anomaly_score", 0.0))
-                hmm_lp = data.get("hmm_log_prob")
-                is_alert = bool(data.get("is_alert", False))
-                explanation = data.get("explanation", "")
-
-                # Detect known attack indicators
-                is_ransom = ".locked" in (event.target or "")
-                is_shell = event.syscall_name == "sys_execve" and "bash" in (event.binary or "")
-                is_smb = event.port == 445 or "445" in str(event.target or "")
-                is_backdoor = event.port in (4444, 1337, 8888) or "attacker" in str(event.target or "")
-
-                is_attack = is_ransom or is_smb or is_shell or is_backdoor
-
-                if is_ransom:
-                    score = 0.984
-                    is_alert = True
-                    explanation = "3.0x multiplier on .locked file extension; 1.8x on sys_rename"
-                elif is_smb:
-                    score = 0.942
-                    is_alert = True
-                    explanation = "2.5x multiplier on port 445 SMB lateral pivot"
-                elif is_shell:
-                    score = 0.895
-                    is_alert = True
-                    explanation = "High penalty (2.0x) for unexpected shell inside medical container"
-                elif is_backdoor:
-                    score = 0.920
-                    is_alert = True
-                    explanation = "Unauthorized reverse shell / backdoor connection detected"
-                else:
-                    # Verified normal clinical telemetry
-                    is_alert = False
-                    explanation = "Normal clinical workload baseline"
-
-                # For baseline normal traffic verified as non-alert:
-                # Fluctuates naturally between 0.016 and 0.025:
-                # [ehr] sys_read -> ~0.023
-                # [vitals] sys_recvfrom -> ~0.018
-                # [drug-dispenser] sys_write -> ~0.016
-                # [billing] sys_connect -> ~0.027
-                if is_alert:
-                    calibrated_score = round(score, 4)
-                else:
-                    syscall_baselines = {
-                        "sys_read": 0.023,       # Clinician EHR history query baseline (~0.023)
-                        "sys_openat": 0.021,     # Lab results file lookup (~0.021)
-                        "sys_recvfrom": 0.018,   # ICU bedside ECG & SpO2 streaming (~0.018)
-                        "sys_write": 0.016,      # Pump / vitals timeseries write (~0.016)
-                        "sys_connect": 0.027,    # Payment gateway TLS check (~0.027)
-                    }
-                    base = syscall_baselines.get(event.syscall_name, 0.020)
-                    # Micro-jitter (+/- 0.002) for natural stochastic realism (0.016 - 0.025)
-                    jitter = (int(hashlib.md5(f"{event.event_id}{time.time()}".encode()).hexdigest()[:4], 16) % 5 - 2) / 1000.0
-                    calibrated_score = round(max(0.014, min(0.029, base + jitter)), 3)
-
-                return DetectionResult(
-                    event_id=event.event_id,
-                    correlation_id=event.correlation_id,
-                    anomaly_score=calibrated_score,
-                    anomaly_threshold=self.threshold,
-                    is_anomaly=is_alert,
-                    model_name="HalfSpaceTrees-External",
-                    model_version="1.0.0",
-                    hmm_log_prob=round(float(hmm_lp), 4) if (hmm_lp is not None and is_alert) else 0.0,
-                    hmm_threshold=self.hmm_threshold,
-                    is_sequence_anomaly=bool(is_alert and hmm_lp is not None and float(hmm_lp) < self.hmm_threshold),
-                    feature_vector=extract_features(event),
-                    feature_contributions={},
-                    top_contributing_features=[],
-                    explanation=explanation,
-                    confidence=min(0.99, max(0.5, score)) if is_alert else 0.0,
-                    inference_latency_ms=1.0,
-                    events_processed=self.events_processed + 1,
-                )
-        except Exception as e:
-            logger.debug("External anomaly detector unreachable (%s), using in-process model", e)
-        return None
-
     def process(self, event: TelemetryEvent) -> DetectionResult:
         """
-        Process a single event through the full detection pipeline.
-        Returns actual model results — delegating to external service if available.
-        """
-        # Try external service delegation first
-        external_result = self._call_external(event)
-        if external_result is not None:
-            self.events_processed += 1
-            self.total_inference_time_ms += external_result.inference_latency_ms
-            if external_result.is_anomaly or external_result.is_sequence_anomaly:
-                self.alerts_generated += 1
-            return external_result
+        Process a single event through the pure ML detection pipeline.
 
+        Returns raw HalfSpaceTrees + HMM scores — no rule overrides, no score calibration.
+        Rule-based detection (signature matching) is handled separately by RuleEngine
+        in processor.py and recorded under detection_method='RULE_MATCH'.
+
+        Online learning: the model learns from every event (test-then-train),
+        continuously adapting to the normal traffic distribution.
+        """
         start_time = time.monotonic()
 
         # 1. Extract features
         features = extract_features(event)
         hmm_obs = extract_hmm_observation(features)
 
-        # 2. Score with HalfSpaceTrees (test-then-train)
+        # 2. Score with HalfSpaceTrees (test phase)
         anomaly_score = self.model.score_one(features)
         self.events_processed += 1
 
-        # 3. HMM sequence scoring
+        # 3. Online learning: update model with this event (train phase)
+        # Standard online ML: always learn, regardless of anomaly score
+        self.model.learn_one(features)
+
+        # 4. HMM sequence scoring
         self.hmm.add_observation(hmm_obs)
         hmm_log_prob = self.hmm.score_sequence()
-
-        # 4. Deterministic detection rules baseline for controlled scenarios
-        rule_matched = False
-        rule_score = 0.0
-        rule_explanation = ""
-
-        target_str = str(event.target or "")
-        binary_str = str(event.binary or "")
-
-        is_ransom = ".locked" in target_str or any(
-            target_str.endswith(ext) for ext in [".locked", ".encrypted", ".crypto", ".enc"]
-        )
-        is_shell = event.syscall_name == "sys_execve" and (
-            any(s in binary_str for s in ["bash", "sh", "zsh", "python", "perl"])
-            or binary_str.endswith(("/sh", "/bash", "/zsh"))
-        )
-        is_smb = event.port == 445 or "445" in target_str
-        is_recon = (
-            "nmap" in binary_str.lower()
-            or "scan" in target_str.lower()
-            or (event.params and event.params.get("scan") == "recon")
-        )
-        is_dns_exfil = event.syscall_name == "sys_sendto" and (
-            event.port == 53 or "exfil" in target_str
-        )
-        is_backdoor = event.port in (4444, 1337, 8888) or "attacker" in target_str
-
-        if is_ransom:
-            rule_matched = True
-            rule_score = 0.984
-            rule_explanation = "Ransomware encryption activity detected: suspicious file rename with encryption extension"
-        elif is_shell:
-            rule_matched = True
-            rule_score = 0.895
-            rule_explanation = f"Unauthorized shell execution in container: {binary_str or 'shell binary'}"
-        elif is_smb:
-            rule_matched = True
-            rule_score = 0.942
-            rule_explanation = f"SMB lateral movement attempt (port 445) on {event.pod_name}"
-        elif is_recon:
-            rule_matched = True
-            rule_score = 0.880
-            rule_explanation = f"Network reconnaissance / port scan detected on {event.pod_name}"
-        elif is_dns_exfil:
-            rule_matched = True
-            rule_score = 0.875
-            rule_explanation = f"DNS exfiltration / tunneling detected: {target_str or 'port 53'}"
-        elif is_backdoor:
-            rule_matched = True
-            rule_score = 0.920
-            rule_explanation = "Reverse shell / backdoor connection detected"
-
-        if rule_matched:
-            anomaly_score = max(anomaly_score, rule_score)
-        else:
-            # Calibrate normal baseline clinical events to stay within healthy range
-            is_clinical_normal = (
-                (event.pod_name == "vitals" and event.syscall_name in ("sys_recvfrom", "sys_write"))
-                or (event.pod_name == "ehr" and event.syscall_name in ("sys_read", "sys_openat"))
-                or (event.pod_name == "drug-dispenser" and event.syscall_name in ("sys_read", "sys_write"))
-                or (event.pod_name == "billing" and event.syscall_name in ("sys_read", "sys_connect"))
-            )
-            if is_clinical_normal and anomaly_score > 0.05:
-                anomaly_score = min(0.025, anomaly_score * 0.02)
-
-            # Learn verified normal events into the model to continuously track normal drift
-            if anomaly_score < self.threshold:
-                self.model.learn_one(features)
 
         # 5. Determine alert (from ML model or verified rule match)
         is_anomaly = anomaly_score > self.threshold
         is_sequence_anomaly = self.hmm.is_trained and hmm_log_prob < self.hmm_threshold
 
-        # 6. Generate explanation for anomalous events
-        explanation = rule_explanation if rule_matched else ""
+        # 6. Generate ML explanation for anomalous events
+        explanation = ""
         contributions: dict[str, float] = {}
         top_features: list[str] = []
         confidence = 0.0
@@ -464,13 +301,10 @@ class StreamingAnomalyDetector:
         if is_anomaly or is_sequence_anomaly:
             self.alerts_generated += 1
             contributions = self.explainer.explain(features, anomaly_score)
-            if not explanation:
-                explanation = self.explainer.top_explanation(contributions)
+            explanation = self.explainer.top_explanation(contributions)
 
-            # Confidence from score distance above threshold or rule match
-            if rule_matched:
-                confidence = min(0.99, max(0.85, anomaly_score))
-            elif is_anomaly:
+            # Confidence from score distance above threshold
+            if is_anomaly:
                 distance = anomaly_score - self.threshold
                 confidence = min(0.99, 0.5 + distance * 2.0)
             elif is_sequence_anomaly:
@@ -500,6 +334,7 @@ class StreamingAnomalyDetector:
             confidence=round(confidence, 3),
             inference_latency_ms=round(inference_time, 2),
             events_processed=self.events_processed,
+            detection_method="ML_ANOMALY" if (is_anomaly or is_sequence_anomaly) else "NONE",
         )
 
     @property
@@ -522,4 +357,5 @@ class StreamingAnomalyDetector:
             ) if self.events_processed > 0 else 0.0,
             "hmm": self.hmm.status,
             "feature_names": FEATURE_NAMES,
+            "detection_note": "Pure ML output. Rule-based detection is handled separately by RuleEngine.",
         }

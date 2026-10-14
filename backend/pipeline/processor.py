@@ -12,6 +12,11 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Optional, Callable
 
+try:
+    import psutil
+except ImportError:  # pragma: no cover — dev without psutil installed
+    psutil = None  # type: ignore
+
 from backend.config import settings
 from backend.core.event_schema import (
     TelemetryEvent, DetectionResult, DiagnosisResult, Incident,
@@ -450,6 +455,10 @@ class SentinelPipeline:
             round(sum(self._mttr_values) / len(self._mttr_values), 2)
             if self._mttr_values else None
         )
+        try:
+            cpu_pct = round(float(psutil.cpu_percent(interval=None)), 1) if psutil else 0.0
+        except Exception:
+            cpu_pct = 0.0
 
         return {
             "events_processed": self.detector.events_processed,
@@ -461,8 +470,8 @@ class SentinelPipeline:
             "mttr_label": (f"{avg_mttr / 1000.0:.2f}s" if avg_mttr >= 1000 else f"{avg_mttr:.0f}ms") if avg_mttr is not None else "N/A",
             "mttd_samples": len(self._mttd_values),
             "mttr_samples": len(self._mttr_values),
-            "cpu_overhead": 2.4,
-            "cpu_overhead_label": "2.4%",
+            "cpu_overhead": cpu_pct,
+            "cpu_overhead_label": f"{cpu_pct:.1f}%",
             "cpu_overhead_target": "< 5.0%",
             "detector": self.detector.status,
             "actions_executed": self.orchestrator.total_actions,

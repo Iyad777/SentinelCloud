@@ -40,12 +40,15 @@ class TelemetrySource(str, Enum):
     HTTP_INGESTION = "http"
     LAB_TEST = "lab_test"
     REPLAY = "replay"
+    HTTP_LOG = "http_log"     # Flask access log tail from medical service
 
 
 class DataMode(str, Enum):
     LIVE = "live"
     REPLAY = "replay"
     LAB_TEST = "lab_test"
+    HTTP_LOG = "http_log"      # Real tailed HTTP access log from a medical service
+    SYNTHETIC = "synthetic"   # Synthetic baseline warm-up events (clearly labelled)
 
 
 class ServiceStatus(str, Enum):
@@ -145,6 +148,13 @@ class DetectionResult(BaseModel):
     # Explanation
     explanation: str = ""
     confidence: float = 0.0
+
+    # Detection method — explicitly records which detector fired
+    # Values: RULE_MATCH | ML_ANOMALY | BOTH | NONE
+    detection_method: str = "NONE"
+    rule_id: Optional[str] = None        # e.g. "RANSOM_001"
+    rule_name: Optional[str] = None      # e.g. "Ransomware: file rename to .locked"
+    mitre_technique: Optional[str] = None  # e.g. "T1486"
 
     # Timing
     inference_latency_ms: float = 0.0

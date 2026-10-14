@@ -88,7 +88,11 @@ class SQLiteStore:
                 confidence REAL NOT NULL DEFAULT 0.0,
                 inference_latency_ms REAL NOT NULL DEFAULT 0.0,
                 events_processed INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                detection_method TEXT NOT NULL DEFAULT 'NONE',
+                rule_id TEXT,
+                rule_name TEXT,
+                mitre_technique TEXT
             );
 
             CREATE TABLE IF NOT EXISTS incidents (
@@ -151,7 +155,22 @@ class SQLiteStore:
             CREATE INDEX IF NOT EXISTS idx_test_sessions_status ON test_sessions(status);
         """)
         conn.commit()
+        self._migrate()  # add newer columns to pre-existing DB files
         logger.info("SQLite database initialized at %s", self.db_path)
+
+    def _migrate(self):
+        """ALTER TABLE migration for columns added after first release."""
+        conn = self._get_conn()
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(detections)").fetchall()}
+        for name, ddl in (
+            ("detection_method", "ALTER TABLE detections ADD COLUMN detection_method TEXT NOT NULL DEFAULT 'NONE'"),
+            ("rule_id", "ALTER TABLE detections ADD COLUMN rule_id TEXT"),
+            ("rule_name", "ALTER TABLE detections ADD COLUMN rule_name TEXT"),
+            ("mitre_technique", "ALTER TABLE detections ADD COLUMN mitre_technique TEXT"),
+        ):
+            if name not in cols:
+                conn.execute(ddl)
+        conn.commit()
 
     # ── Events ──
 
@@ -220,8 +239,9 @@ class SQLiteStore:
              is_anomaly, model_name, model_version, hmm_log_prob, hmm_threshold,
              is_sequence_anomaly, feature_vector, feature_contributions,
              top_contributing_features, explanation, confidence,
-             inference_latency_ms, events_processed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             inference_latency_ms, events_processed,
+             detection_method, rule_id, rule_name, mitre_technique)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             detection.event_id,
             detection.correlation_id,
@@ -241,6 +261,10 @@ class SQLiteStore:
             detection.confidence,
             detection.inference_latency_ms,
             detection.events_processed,
+            getattr(detection, "detection_method", "NONE"),
+            getattr(detection, "rule_id", None),
+            getattr(detection, "rule_name", None),
+            getattr(detection, "mitre_technique", None),
         ))
         conn.commit()
 

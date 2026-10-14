@@ -124,12 +124,17 @@ async def lifespan(app: FastAPI):
 
     # Start live clinical telemetry and attack generator
     from backend.pipeline.live_traffic_generator import LiveTrafficGenerator
+    from backend.pipeline.log_tail import LogTailIngester
     traffic_generator = LiveTrafficGenerator(pipeline)
     traffic_generator.start()
+
+    log_tailer = LogTailIngester(pipeline)
+    log_tailer.start()
 
     yield
 
     traffic_generator.stop()
+    log_tailer.stop()
     logger.info("SentinelCloud backend shutting down")
 
 
