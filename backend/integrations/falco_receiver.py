@@ -19,10 +19,11 @@ Example Falco alert:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 
 from backend.config import settings
 from backend.core.event_schema import TelemetryEvent, TelemetrySource, DataMode
@@ -73,7 +74,8 @@ def _falco_to_telemetry_event(alert: dict) -> Optional[TelemetryEvent]:
         pod_name=container or "unknown",
         namespace="medical",
         syscall_name=SYSCALL_MAP.get(evt_type, evt_type or "sys_read"),
-        binary=f"/proc/{fields.get('proc.pid', '?')}/exe ({proc_name})" if proc_name else "",
+        comm=proc_name,
+        binary=proc_name or f"/proc/{fields.get('proc.pid', '?')}/exe",
         target=fd_name or proc_args,
         port=port,
         params={
@@ -86,8 +88,12 @@ def _falco_to_telemetry_event(alert: dict) -> Optional[TelemetryEvent]:
 
 
 @falco_router.post("/webhook")
-async def falco_webhook(payload: dict, x_falco_token: Optional[str] = Header(default=None)):
-    """Receive a Falco alert and inject it into the detection pipeline."""
+async def falco_webhook(request: Request, x_falco_token: Optional[str] = Header(default=None)):
+    """Receive Falco alert(s) and inject them into the detection pipeline.
+
+    Tolerates both shapes Falco versions emit: a single JSON object or a
+    JSON array of alert objects.
+    """
     from backend.pipeline.processor import pipeline
 
     if not getattr(settings, "falco_enabled", False):
@@ -95,19 +101,36 @@ async def falco_webhook(payload: dict, x_falco_token: Optional[str] = Header(def
     expected = getattr(settings, "falco_webhook_token", "") or ""
     if expected and x_falco_token != expected:
         raise HTTPException(status_code=401, detail="Invalid Falco webhook token")
-    event = _falco_to_telemetry_event(payload)
-    if event is None:
+
+    raw = await request.body()
+    try:
+        payload = json.loads(raw or b"{}")
+    except ValueError:
+        logger.warning("Non-JSON Falco webhook body: %r", raw[:300])
+        return {"accepted": False, "reason": "Body is not valid JSON"}
+    alerts = payload if isinstance(payload, list) else [payload]
+
+    results = []
+    for alert in alerts:
+        event = _falco_to_telemetry_event(alert)
+        if event is None:
+            continue
+        detection = pipeline.process_event(event)
+        logger.info("Falco alert ingested: rule=%s pod=%s method=%s",
+                    alert.get("rule", "?"), event.pod_name, detection.detection_method)
+        results.append({
+            "accepted": True,
+            "event_id": event.event_id,
+            "anomaly_score": detection.anomaly_score,
+            "detection_method": detection.detection_method,
+            "rule_id": detection.rule_id,
+        })
+
+    if not results:
+        logger.warning("Unparsable Falco alert: %s",
+                       json.dumps(alerts[0])[:300] if alerts else "<empty>")
         return {"accepted": False, "reason": "Could not parse Falco alert"}
-    detection = pipeline.process_event(event)
-    logger.info("Falco alert ingested: rule=%s pod=%s method=%s",
-                payload.get("rule", "?"), event.pod_name, detection.detection_method)
-    return {
-        "accepted": True,
-        "event_id": event.event_id,
-        "anomaly_score": detection.anomaly_score,
-        "detection_method": detection.detection_method,
-        "rule_id": detection.rule_id,
-    }
+    return {"accepted": True, "count": len(results), "alerts": results}
 
 
 @falco_router.get("/status")

@@ -133,6 +133,8 @@ class LiveTrafficGenerator:
         self.pipeline = pipeline
         self.running = False
         self.thread: Optional[threading.Thread] = None
+        self.events_emitted = 0
+        self.warmup_limit = 500   # stop after cold-start warm-up per plan
 
     def start(self):
         if self.running:
@@ -183,3 +185,8 @@ class LiveTrafficGenerator:
             params=template["params"],
         )
         self.pipeline.process_event(event)
+        self.events_emitted += 1
+        if self.events_emitted >= self.warmup_limit:
+            logger.info("Warm-up complete (%d synthetic events) — baseline generator stopping",
+                        self.events_emitted)
+            self.running = False

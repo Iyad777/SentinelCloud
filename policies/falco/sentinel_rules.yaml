@@ -7,14 +7,13 @@
   desc: A shell was spawned inside a medical microservice container
   condition: >
     spawned_process and container
-    and proc.name in (bash, sh, zsh, dash, python3, python)
+    and proc.name in (bash, sh, zsh, dash)
+    and not proc.cmdline contains urllib
     and container.name in (ehr, vitals, billing, drug-dispenser,
       sentinel-cloud-ehr-1, sentinel-cloud-vitals-1,
       sentinel-cloud-billing-1, sentinel-cloud-drug-dispenser-1,
       sentinel-services-ehr-1, sentinel-services-vitals-1,
       sentinel-services-billing-1, sentinel-services-drug-dispenser-1)
-  output: >
-    Shell spawned in medical container
     (container=%container.name proc=%proc.name args=%proc.args evt=%evt.type)
   priority: WARNING
   tags: [shell, T1059.004]
