@@ -2,12 +2,14 @@
 ## eBPF-Driven Autonomous Cyber-Resilience for Medical Microservices
 
 ## Overview
-SentinelCloud-Advanced is a comprehensive cyber-resilience platform that protects critical medical microservices against advanced threats such as ransomware, lateral movement, and data exfiltration. It combines real-time telemetry (eBPF/Tetragon/Falco), streaming machine learning anomaly detection, causal root-cause diagnosis, and autonomous remediation using the MAPE-K control loop.
+SentinelCloud-Advanced is a cyber-resilience platform that protects critical medical microservices against advanced threats such as ransomware, lateral movement, and data exfiltration. It combines two independently-recorded detection systems — a MITRE-mapped signature rule engine and an online streaming ML model (HalfSpaceTrees + HMM) — with real-time telemetry, causal root-cause diagnosis, and autonomous remediation using the MAPE-K control loop.
+
+Live telemetry comes from two real sources: Falco's eBPF probe capturing actual kernel syscalls inside the medical service containers (delivered to the backend via webhook), and structured JSON access logs tailed from the running medical services. Synthetic events exist only as clearly-labeled cold-start baseline warm-up and stop after 500 events.
 
 The system operates in three modes:
 - **LIVE**: Full Kubernetes cluster with real infrastructure (Tetragon, Kafka, ClickHouse, Cilium).
 - **LAB**: Local Docker Compose environment with real services and containerized dependencies.
-- **DEV**: Single-machine development mode with in-process ML and simulated remediation.
+- **DEV**: Single-machine development mode with in-process ML; remediation attempts real Docker container stop/restart when reachable, otherwise records the action with a clear `[DEV MODE]` label.
 
 ## Architecture
 See [docs/architecture.md](docs/architecture.md) for detailed design and diagrams.
@@ -227,7 +229,7 @@ python3 testing/pc2_client.py --pc1-url http://192.168.1.100:5050 --scenario she
 ```
 *What happens:*
 - PC2 submits an authorized `sys_execve` event with `/bin/bash`
-- PC1 ML pipeline flags the anomaly (score ~0.895)
+- PC1 ML pipeline flags the anomaly (score crosses the configured threshold)
 - Incident is automatically opened on PC1
 - MAPE-K quarantines the pod, rolls out a clean container, and verifies health
 - PC2 observes the recovery and outputs an evidence verification table
@@ -242,7 +244,10 @@ python3 testing/pc2_client.py --pc1-url http://192.168.1.100:5050 --scenario ran
   2. Database encryption and rename (`sys_rename` -> `.locked`)
   3. Lateral movement pivot to billing (`sys_connect` -> port 445 SMB)
   4. DNS exfiltration tunnel (`sys_sendto` -> port 53)
-- PC1 detects high-severity anomaly (score ~0.984)
+- The signature rule engine (`RANSOM_001`, `SHELL_001`, `LATERAL_001`, `EXFIL_001`)
+  fires deterministically; the HalfSpaceTrees ML model scores the same events
+  independently. Which detector fired is recorded per event
+  (`RULE_MATCH` / `ML_ANOMALY` / `BOTH`).
 - MAPE-K executes failover & quarantine, restores the service to healthy
 - PC2 verifies post-mitigation service restoration and records the evidence report
 
@@ -256,42 +261,82 @@ python3 testing/pc2_client.py --pc1-url http://192.168.1.100:5050 --scenario rec
 ## Operating Environment & Telemetry Notes
 
 - **macOS Development**:
-  Linux kernel eBPF probes and Cilium/Tetragon kernel hooks require a Linux host. On macOS, the platform runs in `DEV` mode: all telemetry ingestion, real ML streaming anomaly detection (HalfSpaceTrees + HMM), root-cause diagnosis, and MAPE-K lifecycle logic execute with complete mathematical and architectural fidelity in-process.
+  Linux kernel eBPF probes and Cilium/Tetragon kernel hooks require a Linux host. On macOS, the platform runs in `DEV` mode: telemetry ingestion (Falco webhook, HTTP log tailing), real ML streaming anomaly detection (HalfSpaceTrees + HMM), rule-engine detection, root-cause diagnosis, and MAPE-K lifecycle logic all execute in-process. Kernel-level syscall capture is provided by running Falco in a Linux VM (e.g., UTM) with the medical services in Docker — see `deploy/utm-setup.md`.
 - **Linux / Kubernetes Deployment**:
-  In a Linux or Kubernetes cluster with Tetragon deployed, telemetry events stream directly from kernel probes via the Tetragon-Kafka forwarder.
+  In a Linux or Kubernetes cluster, Falco (or Tetragon via the Kafka forwarder) streams kernel-level events into the same ingestion pipeline.
 - **Event Provenance**:
   All events are explicitly labeled in the UI and data model:
-  - `API Test (PC2)`: Injected by the external authorized test client
-  - `ADFA / MIMIC`: Deterministically replayed authentic benchmark records from ADFA-LD & MIMIC-III
-  - `Kernel eBPF`: Captured directly by Tetragon or kernel probes
-  - `Dataset Replay`: Streamed benchmark replay evaluation (ADFA-LD / BETH)
+  - `http` (API Test / PC2): Injected by the external authorized test client or lab scenario runner
+  - `http_log`: Tailed from the real JSON access logs of the running medical services (Flask services emit structured logs; the backend tails and abstracts HTTP to syscall semantics)
+  - `falco`: Real kernel-level syscall events captured by Falco's eBPF probe on a Linux host/VM and delivered to the backend via authenticated webhook
+  - `synthetic`: Clearly-labeled baseline warm-up events emitted only during the online model's cold-start period; they stop after 500 events and never claim to be live
+  - `replay` / `lab_test`: Deterministic benchmark replay and lab-injected events
 
 ---
 
-## Benchmark Dataset Sources & Provenance (Internal Traffic)
+## Telemetry Sources: What Is Real vs. What Is Simulated
 
-Internal microservice telemetry uses real, un-synthesized traces from peer-reviewed public datasets rather than synthetic or pseudo-random generation:
+This platform is honest about where every event comes from:
 
-### 1. Host-Level System Call Telemetry: ADFA-LD
-- **Source**: University of New South Wales (UNSW Canberra), Cyber Security Research Group.
-- **Paper**: Creech, G., & Hu, J. (2013). *"Generation of a new Australian Defence Force Academy Linux Dataset (ADFA-LD) for the Evaluation of Host-based Intrusion Detection Systems."* 2013 IEEE 8th International Conference on Wireless and Mobile Computing, Networking and Communications (WiMob), pp. 448–453.
-- **Repository**: [UNSW Canberra ADFA Datasets](https://research.unsw.edu.au/projects/adfa-ids-datasets)
-- **Role in Platform**: Supplies authentic Linux system call traces (`sys_read`, `sys_openat`, `sys_write`, `sys_close`, `sys_mmap`, `sys_recvfrom`, `sys_connect`, `sys_ioctl`) captured via Linux auditd from servers running live workloads.
+### 1. Kernel-level telemetry: Falco + eBPF (LIVE)
+On a Linux host or VM, [Falco](https://falco.org/) runs with its modern eBPF
+probe and captures real syscall activity (`execve`, `connect`, `rename`,
+`sendto`, `openat`, ...) inside the medical microservice containers. Alerts
+are POSTed as JSON to this backend's `/api/falco/webhook`, converted into
+`TelemetryEvent` objects (`source=falco`, `data_mode=live`), and processed by
+the same pipeline as all other telemetry. Custom rules in
+`policies/falco/sentinel_rules.yaml` cover the attack scenarios used in
+testing. See `deploy/utm-setup.md` for the reference setup.
 
-### 2. Clinical Microservice Workloads: MIMIC-III
-- **Source**: MIT Laboratory for Computational Physiology (LCP) & Beth Israel Deaconess Medical Center (BIDMC), published via PhysioNet.
-- **Paper**: Johnson, A. E. W., Pollard, T. J., Shen, L., Lehman, L. H., Feng, M., Ghassemi, M., Moody, B., Szolovits, P., Celi, L. A., & Mark, R. G. (2016). *"MIMIC-III, a freely accessible critical care database."* Scientific Data, 3, 160035.
-- **Repository**: [PhysioNet MIMIC-III](https://physionet.org/content/mimiciii/)
-- **Role in Platform**: Supplies authentic ICU bedside physiologic telemetry (genuine heart rate, SpO2, systolic/diastolic blood pressure), real hospital medication administration orders (NDC formulary codes, dosage, infusion rates), and authentic ICD-10 diagnostic claims.
+### 2. Application-level telemetry: structured HTTP access logs (LIVE)
+The four medical services (`ehr`, `vitals`, `drug-dispenser`, `billing`) emit
+structured JSON access logs. The backend's log tailer
+(`backend/pipeline/log_tail.py`) follows these files in real time, converts
+each request into a `TelemetryEvent` (`source=http_log`), and abstracts
+HTTP method+path into syscall semantics (`GET /record` -> `sys_read`,
+`POST /record` -> `sys_write`, `DELETE` -> `sys_unlink`, ...). The companion
+traffic generator (`simulation/benign_traffic_generator.py`) drives real HTTP
+requests against the service endpoints — including an `--mode attack` that
+issues anomalous request patterns — so this telemetry path is exercised with
+real, end-to-end HTTP traffic.
 
-### 3. Component Trimming & Deterministic Replay
-Raw traces were aligned and trimmed into unified `TelemetryEvent` structures mapped across the 4 microservices:
-- **`ehr`**: System calls `sys_read` & `sys_openat` accessing real de-identified patient charts and clinical lab queries.
-- **`vitals`**: Network calls `sys_recvfrom` & `sys_write` streaming real ICU bedside monitor telemetry packets.
-- **`drug-dispenser`**: I/O calls `sys_write` & `sys_read` executing authentic NDC medication infusion commands and safety limit checks.
-- **`billing`**: Socket calls `sys_connect` & `sys_read` conducting ICD-10 diagnostic billing audits against payment gateways.
+### 3. Synthetic baseline warm-up (SYNTHETIC, cold-start only)
+Online models need an initial distribution before they can meaningfully score
+novel events. A clearly-labeled synthetic generator emits baseline clinical
+templates (`data_mode=synthetic`) for the first 500 events only, then stops.
+These events are never presented as live traffic.
 
-Replay policy: **Deterministic Sequential Round-Robin (0% Randomness)**. Every event maps to a distinct record ID (`REC-0001` through `REC-0080`) and source trace benchmark reference.
+### 4. Authorized attack injection (lab test / PC2 client)
+Attack scenarios are injected explicitly and labeled as such: the two-PC test
+client (`testing/pc2_client.py`), the lab scenario runner, and
+`--mode attack` on the traffic generator. Nothing is misattributed to
+"organic" traffic.
+
+### Detection: two separate, independently-recorded systems
+- **Signature rule engine** (`backend/pipeline/rule_engine.py`): deterministic,
+  named rules (`RANSOM_001`, `SHELL_001`, `LATERAL_001`, `RECON_001`,
+  `EXFIL_001`, `BACKDOOR_001`, `BRUTE_001`), each mapped to a MITRE ATT&CK
+  technique. Rule matches never alter the ML score.
+- **Online ML** (`backend/pipeline/detector.py`): HalfSpaceTrees (streaming
+  anomaly detection) + HMM sequence scoring, returning raw model output with
+  no hardcoded overrides or calibration tables.
+Every detection record stores which system fired (`RULE_MATCH`, `ML_ANOMALY`,
+`BOTH`, or `NONE`) and the matching rule id / MITRE technique.
+
+### MAPE-K remediation
+Remediation uses the Docker SDK to stop (quarantine) and restart (redeploy)
+the affected container when one is reachable; timings are the real operation
+durations, not simulated sleeps. When no matching container is reachable
+(e.g., pure development mode), the action is recorded and labeled as such
+rather than faked. On Kubernetes, real namespace-scoped operations are used.
+
+### Datasets: future work, not live telemetry
+ADFA-LD and MIMIC-III are **not** currently wired into the live pipeline. The
+`simulation/dataset_replay/` engine exists as an offline evaluation harness
+with placeholder sample records; connecting real benchmark datasets is
+explicitly future work. No claim of "replayed authentic benchmark records"
+being present in the live traffic path should be made until that integration
+is implemented and validated with the real datasets.
 
 ## Security & Resilience Guarantees
 - **Authentication**: JWT with bcrypt hashing and role-based access.
