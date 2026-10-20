@@ -99,6 +99,14 @@ class Settings(BaseSettings):
     drug_dispenser_log_path: str = Field(default="./data/dispenser.log")
     log_tail_enabled: bool = Field(default=True)
 
+    # ── Synthetic baseline warm-up (opt-in; off by default) ──
+    synthetic_warmup_enabled: bool = Field(
+        default=False,
+        description="Emit SYNTHETIC-labelled baseline events for the online model's "
+                    "cold start. Off by default: the model trains on live Falco + "
+                    "HTTP traffic instead. Enable only for cold-start research.",
+    )
+
     # ── Docker remediation ──
     docker_remediation_enabled: bool = Field(default=True)
     docker_compose_project: str = Field(default="sentinel-cloud")

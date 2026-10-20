@@ -122,11 +122,15 @@ async def lifespan(app: FastAPI):
                 pipeline.detector._model_version, pipeline.detector.threshold)
     logger.info("═" * 60)
 
-    # Start live clinical telemetry and attack generator
+    # Synthetic baseline warm-up: opt-in only (SENTINEL_SYNTHETIC_WARMUP_ENABLED).
+    # Off by default — the model trains on live Falco + HTTP traffic instead.
     from backend.pipeline.live_traffic_generator import LiveTrafficGenerator
     from backend.pipeline.log_tail import LogTailIngester
     traffic_generator = LiveTrafficGenerator(pipeline)
-    traffic_generator.start()
+    if getattr(settings, "synthetic_warmup_enabled", False):
+        traffic_generator.start()
+    else:
+        logger.info("Synthetic warm-up disabled — training on live traffic only")
 
     log_tailer = LogTailIngester(pipeline)
     log_tailer.start()

@@ -300,11 +300,14 @@ requests against the service endpoints — including an `--mode attack` that
 issues anomalous request patterns — so this telemetry path is exercised with
 real, end-to-end HTTP traffic.
 
-### 3. Synthetic baseline warm-up (SYNTHETIC, cold-start only)
-Online models need an initial distribution before they can meaningfully score
-novel events. A clearly-labeled synthetic generator emits baseline clinical
-templates (`data_mode=synthetic`) for the first 500 events only, then stops.
-These events are never presented as live traffic.
+### 3. Synthetic baseline warm-up (SYNTHETIC, opt-in, off by default)
+Online models can optionally receive an initial distribution before scoring
+novel events. A clearly-labeled synthetic generator can emit baseline clinical
+templates (`data_mode=synthetic`) for the first 500 events, then stop — enable
+with `SENTINEL_SYNTHETIC_WARMUP_ENABLED=true` for cold-start research only.
+By default it is **off**: the model trains purely on live Falco + HTTP
+traffic, so no synthetic asterisk attaches to the evaluation. These events,
+when enabled, are never presented as live traffic.
 
 ### 4. Authorized attack injection (lab test / PC2 client)
 Attack scenarios are injected explicitly and labeled as such: the two-PC test
