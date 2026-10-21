@@ -106,11 +106,16 @@ def execute_attack_stage(base_url, headers, stage_num, stage_data):
     
     try:
         resp = requests.post(
-            f"{base_url}/api/telemetry/inject",
+            f"{base_url}/api/telemetry/ingest",
             headers=headers,
             json={
-                "stage": stage_data["stage"],
+                "pod_name": "ehr",
+                "namespace": "medical",
+                "syscall_name": "sys_execve",
+                "binary": "/bin/bash",
                 "target": stage_data["target"],
+                "source": "lab_test",
+                "params": {"stage": stage_data["stage"]},
             },
             timeout=15,
         )
