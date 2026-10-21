@@ -55,7 +55,7 @@ class SentinelPipeline:
         self.orchestrator = MAPEKOrchestrator()
 
         # Event/incident stores (in-memory, persisted to SQLite/ClickHouse)
-        self.events: deque[TelemetryEvent] = deque(maxlen=1000)
+        self.events: deque[TelemetryEvent] = deque(maxlen=5000)
         self.detections: deque[DetectionResult] = deque(maxlen=500)
         self.incidents: dict[str, Incident] = {}  # incident_id -> Incident
         self.audit_log = audit_trail  # backed by SQLite
