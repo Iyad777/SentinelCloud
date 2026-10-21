@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { useSocket } from './socket-provider';
 import { LoadingSpinner } from './loading-spinner';
 import { EmptyState } from './empty-state';
-import { Download, Filter, Pause, Play, AlertCircle } from 'lucide-react';
+import { Download, Filter } from 'lucide-react';
 
 export interface TelemetryEvent {
   event_id: string;
@@ -43,7 +43,6 @@ export function TelemetryTable({ limit = 20 }: { limit?: number }) {
   const [filterPod, setFilterPod] = useState('');
   const [filterSyscall, setFilterSyscall] = useState('');
   const [filterAlertOnly, setFilterAlertOnly] = useState(false);
-  const [paused, setPaused] = useState(false);
 
   // Derived filtered events
   const filteredEvents = events.filter((e) => {
@@ -147,13 +146,6 @@ export function TelemetryTable({ limit = 20 }: { limit?: number }) {
             />
             Alert Only
           </label>
-          <button
-            onClick={() => setPaused((p) => !p)}
-            className="flex items-center gap-2 px-2 py-1 rounded text-xs bg-muted border border-border text-muted-foreground hover:bg-muted/50"
-          >
-            <span className="w-3.5 h-3.5 shrink-0">{paused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}</span>
-            {paused ? 'Resume' : 'Pause'}
-          </button>
           <button
             onClick={handleExport}
             className="flex items-center gap-2 px-2.5 py-1 rounded text-xs bg-blue-500/10 border border-blue-500/30 text-blue-600 hover:bg-blue-500/20"
