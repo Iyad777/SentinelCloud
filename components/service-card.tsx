@@ -24,6 +24,10 @@ export interface ServiceInfo {
   last_event_time?: string | null;
 }
 
+function fmt(v: unknown, fallback: string) {
+  return (v === undefined || v === null || v === '' ? fallback : String(v));
+}
+
 export function ServiceCard({
   service,
 }: {
@@ -33,12 +37,15 @@ export function ServiceCard({
   const isRecovering = service.status === 'redeploying';
   const isHealthy = service.status === 'healthy';
 
-  const score = service.last_anomaly_score ?? (isHealthy ? 0.023 : 0.984);
-  const scorePct = Math.min(100, Math.max(2, Math.round(score * 100)));
+  // Use the real anomaly score from the API; never fall back to hard-coded healthy/attack defaults
+  const score = service.last_anomaly_score ?? null;
+  const scorePct = score !== null
+    ? Math.min(100, Math.max(2, Math.round((score ?? 0) * 100)))
+    : 0;
 
   return (
     <div
-      className={`rounded-xl border p-4 shadow-sm transition-all duration-300 flex flex-col justify-between ${
+      className={`rounded-xl border p-4 shadow-sm transition-all duration-300 flex flex-col justify-between min-h-[180px] ${
         isThreat
           ? 'bg-red-950/20 border-red-800/80 ring-1 ring-red-500/30'
           : isRecovering
@@ -89,31 +96,31 @@ export function ServiceCard({
             {/* Score Pill */}
             <span
               className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                score >= 0.72
+                score !== null && score >= 0.72
                   ? 'bg-red-900/60 text-red-300 border border-red-700/60'
                   : 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/60'
               }`}
             >
-              Score: {score.toFixed(3)}
+              Score: {score !== null ? score.toFixed(3) : '—'}
             </span>
           </div>
 
-          <p className="text-[11px] text-muted-foreground leading-tight line-clamp-2 mb-2">
+          <p className="text-[11px] text-muted-foreground leading-tight">
             {service.active_threat
               ? service.active_threat
-              : service.last_activity_desc || 'Doctor requested patient medical history'}
+              : service.last_activity_desc || 'No recent activity'}
           </p>
 
           {/* Syscall & Execution Details */}
           <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono pt-1.5 border-t border-border/40">
             <div className="truncate">
               <span className="text-muted-foreground/80">Syscall: </span>
-              <span className="text-foreground font-medium">{service.last_syscall || 'sys_read'}</span>
+              <span className="text-foreground font-medium">{fmt(service.last_syscall, 'sys_read')}</span>
             </div>
             <div className="truncate">
               <span className="text-muted-foreground/80">Binary: </span>
               <span className="text-foreground font-medium">
-                {service.last_binary ? service.last_binary.split('/').pop() : 'gunicorn'}
+                {fmt(service.last_binary, 'gunicorn').split('/').pop()}
               </span>
             </div>
             {service.last_target && (
@@ -131,12 +138,18 @@ export function ServiceCard({
         <div className="mb-3 px-1">
           <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
             <span>ML Anomaly Score</span>
-            <span className="font-mono">{score.toFixed(3)} / 1.000</span>
+            <span className="font-mono">
+              {score !== null ? `${score.toFixed(3)} / 1.000` : '—'}
+            </span>
           </div>
           <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden relative">
             <div
               className={`h-full transition-all duration-500 ${
-                score >= 0.72 ? 'bg-red-500' : score >= 0.4 ? 'bg-amber-400' : 'bg-emerald-500'
+                score !== null && score >= 0.72
+                  ? 'bg-red-500'
+                  : score !== null && score >= 0.4
+                  ? 'bg-amber-400'
+                  : 'bg-emerald-500'
               }`}
               style={{ width: `${scorePct}%` }}
             />
@@ -162,12 +175,12 @@ export function ServiceCard({
       <div className="text-[11px] text-muted-foreground space-y-1 pt-2.5 border-t border-border/50">
         <div className="flex justify-between">
           <span>Uptime:</span>
-          <span className="text-foreground font-mono">{service.uptime_seconds ? `${Math.round(service.uptime_seconds)}s` : '1240s'}</span>
+          <span className="text-foreground font-mono">{fmt(service.uptime_seconds, '—')}</span>
         </div>
         <div className="flex justify-between">
           <span>Reqs / Latency:</span>
           <span className="text-foreground font-mono">
-            {service.request_count ?? 142} &middot; {service.avg_latency_ms ? `${service.avg_latency_ms.toFixed(1)}ms` : '1.8ms'}
+            {fmt(service.request_count, '—')} &middot; {fmt(service.avg_latency_ms, '—')}
           </span>
         </div>
       </div>
