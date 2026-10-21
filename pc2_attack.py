@@ -82,9 +82,15 @@ def authenticate(base_url):
             timeout=10,
         )
         if resp.status_code == 200:
-            token = resp.json().get("access_token")
-            print(f"✅ Authenticated successfully")
-            return token
+            data = resp.json()
+            token = data.get("access_token") or data.get("token")
+            if token:
+                print(f"✅ Authenticated successfully")
+                return token
+            else:
+                print(f"❌ Authentication failed: No token in response")
+                print(f"   Response: {data}")
+                return None
         else:
             print(f"❌ Authentication failed: {resp.status_code} {resp.text}")
             return None
