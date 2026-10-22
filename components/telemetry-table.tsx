@@ -87,10 +87,9 @@ export function TelemetryTable({ limit = 20 }: { limit?: number }) {
   }, [events]);
 
   const handleExport = () => {
-    const headers = ['Time', 'Source', 'Pod', 'Syscall', 'Binary', 'Target', 'Port', 'Score', 'Alert'];
+    const headers = ["Time", "Pod", "Syscall", "Binary", "Target", "Port", "Score", "Alert"];
     const rows = filteredEvents.map((e) => [
       new Date(e.timestamp).toLocaleTimeString(),
-      e.source || '-',
       e.pod_name,
       e.syscall_name,
       e.binary,
@@ -168,7 +167,6 @@ export function TelemetryTable({ limit = 20 }: { limit?: number }) {
           <thead className="sticky top-0 z-10">
             <tr className="border-b border-border bg-muted text-left text-muted-foreground text-xs uppercase tracking-wider">
               <th className="p-2.5">Time</th>
-              <th className="p-2.5">Provenance</th>
               <th className="p-2.5">Pod</th>
               <th className="p-2.5">Syscall</th>
               <th className="p-2.5">Binary</th>
@@ -181,7 +179,7 @@ export function TelemetryTable({ limit = 20 }: { limit?: number }) {
           <tbody className="divide-y divide-border font-mono text-xs">
             {filteredEvents.length === 0 ? (
               <tr>
-                <td className="p-4 text-center text-muted-foreground" colSpan={9}>
+                <td className="p-4 text-center text-muted-foreground" colSpan={8}>
                   No matching events found
                 </td>
               </tr>
@@ -190,25 +188,6 @@ export function TelemetryTable({ limit = 20 }: { limit?: number }) {
                 <tr key={e.event_id} className={`hover:bg-muted/50 transition-colors ${e.is_alert ? 'bg-destructive/5' : ''}`}>
                   <td className="p-2.5 whitespace-nowrap text-muted-foreground">
                     {new Date(e.timestamp).toLocaleTimeString()}
-                  </td>
-                  <td className="p-2.5 whitespace-nowrap">
-                    {e.source === 'lab_test' ? (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-500 border border-amber-500/30">
-                        API Test (PC2)
-                      </span>
-                    ) : e.source === 'replay' ? (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-500/15 text-purple-400 border border-purple-500/30">
-                        Replay
-                      </span>
-                    ) : e.source === 'tetragon' || e.source === 'ebpf_probe' ? (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                        Kernel eBPF
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
-                        Telemetry Stream
-                      </span>
-                    )}
                   </td>
                   <td className="p-2.5 font-medium text-foreground">{e.pod_name}</td>
                   <td className="p-2.5 text-primary">{e.syscall_name}</td>
