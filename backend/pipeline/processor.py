@@ -398,7 +398,7 @@ class SentinelPipeline:
         now = datetime.now(timezone.utc)
         incident = Incident(
             correlation_id=event.correlation_id or detection.correlation_id or event.event_id,
-            severity=Severity.HIGH if detection.anomaly_score > 0.9 else Severity.MEDIUM,
+            severity=Severity.CRITICAL if detection.anomaly_score >= 0.85 else (Severity.HIGH if detection.anomaly_score >= 0.72 else Severity.MEDIUM),
             title=f"Anomaly detected on {event.pod_name}",
             description=detection.explanation,
             affected_pod=event.pod_name,
