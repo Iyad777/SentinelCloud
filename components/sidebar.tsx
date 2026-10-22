@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  ShieldAlert,
   AlertTriangle,
   LogOut,
   LayoutDashboard,
@@ -12,7 +11,6 @@ import {
 
 const navItems = [
   { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { href: '/dashboard/threats', label: 'Threat Operations', icon: ShieldAlert },
   { href: '/dashboard/incidents', label: 'Incidents', icon: AlertTriangle },
   { href: '/dashboard/detection', label: 'Detection Engine', icon: Cpu },
 ];
